@@ -1,0 +1,6 @@
+[workspace]
+members = ["aoc-solver", "aoc-solver-macros", "aoc-http-client"]
+resolver = "3"
+
+[workspace.dependencies]
+inventory = "0.3.21"

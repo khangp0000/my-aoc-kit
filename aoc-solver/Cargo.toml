@@ -1,0 +1,17 @@
+[package]
+name = "aoc-solver"
+version = "0.2.0"
+edition = "2024"
+authors = ["Your Name <your.email@example.com>"]
+description = "A flexible and type-safe framework for solving Advent of Code problems"
+license = "MIT"
+repository = "https://github.com/yourusername/k_aoc_2025_edition_solver"
+keywords = ["advent-of-code", "aoc", "solver", "framework"]
+categories = ["development-tools"]
+
+[dependencies]
+inventory = { workspace = true }
+aoc-solver-macros = { path = "../aoc-solver-macros" }
+thiserror = "2.0"
+
+[dev-dependencies]

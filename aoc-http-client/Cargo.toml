@@ -1,0 +1,16 @@
+[package]
+name = "aoc-http-client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest = { version = "0.12.24", features = ["blocking", "rustls-tls"], default-features = false }
+thiserror = "2.0.17"
+scraper = "0.24.0"
+regex = "1.12.2"
+humantime = "2.3.0"
+zeroize = "1.8.2"
+
+[dev-dependencies]
+proptest = "1.9.0"
+mockito = "1.6.1"
