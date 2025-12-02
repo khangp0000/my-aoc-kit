@@ -7,14 +7,14 @@
 //! Run with: cargo run --example dependent_parts
 
 use aoc_solver::{
-    AocSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver,
+    AutoRegisterSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver,
 };
 
 /// Example solver that processes lines of integers with dependent parts
 ///
 /// - Part 1: Calculate sum and count, return the sum as the answer
 /// - Part 2: Use Part 1's data to calculate average, or compute independently
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 2, tags = ["example", "dependent"])]
 pub struct ExampleDependent;
 

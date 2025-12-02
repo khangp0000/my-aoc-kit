@@ -75,9 +75,9 @@
 //!
 //! ## Plugin System and Derive Macro
 //!
-//! Use `#[derive(AocSolver)]` to automatically register solvers:
+//! Use `#[derive(AutoRegisterSolver)]` to automatically register solvers:
 //! ```ignore
-//! #[derive(AocSolver)]
+//! #[derive(AutoRegisterSolver)]
 //! #[aoc(year = 2023, day = 1, tags = ["easy"])]
 //! struct Day1Solver;
 //! ```
@@ -105,4 +105,4 @@ pub use solver::{PartResult, Solver};
 pub use inventory;
 
 // Re-export the derive macro
-pub use aoc_solver_macros::AocSolver;
+pub use aoc_solver_macros::AutoRegisterSolver;

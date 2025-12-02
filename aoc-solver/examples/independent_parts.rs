@@ -6,14 +6,14 @@
 //! Run with: cargo run --example independent_parts
 
 use aoc_solver::{
-    AocSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver,
+    AutoRegisterSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver,
 };
 
 /// Example solver that processes lines of integers
 ///
 /// - Part 1: Sum all numbers
 /// - Part 2: Product of all numbers
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["example", "independent"])]
 pub struct ExampleIndependent;
 

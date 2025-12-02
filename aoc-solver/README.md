@@ -8,7 +8,7 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 - **Flexible part dependencies**: Support for both independent and dependent parts
 - **Builder pattern**: Fluent API for registry construction with compile-time immutability guarantees
 - **Plugin system**: Automatic solver discovery and registration using the `inventory` crate
-- **Derive macro**: Zero-boilerplate solver registration with `#[derive(AocSolver)]`
+- **Derive macro**: Zero-boilerplate solver registration with `#[derive(AutoRegisterSolver)]`
 - **Flexible filtering**: Register solvers by tags, year, or custom predicates
 - **Caching**: Results are cached to avoid redundant computation
 - **Extensible**: Add new solvers without modifying the core library
@@ -90,12 +90,12 @@ The library supports automatic solver discovery using the `inventory` crate. Thi
 
 ### Using the Derive Macro (Recommended)
 
-The easiest way to register a solver is using the `#[derive(AocSolver)]` macro:
+The easiest way to register a solver is using the `#[derive(AutoRegisterSolver)]` macro:
 
 ```rust
-use aoc_solver::{AocSolver, Solver, ParseError, PartResult, SolveError};
+use aoc_solver::{AutoRegisterSolver, Solver, ParseError, PartResult, SolveError};
 
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["easy", "2023"])]
 pub struct Day1Solver;
 
@@ -185,7 +185,7 @@ inventory::submit! {
 
 **After (Derive Macro):**
 ```rust
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["easy"])]
 pub struct Day1Solver;
 
@@ -197,7 +197,7 @@ The derive macro is cleaner, less error-prone, and keeps metadata close to the s
 ### Benefits of the Plugin System
 
 - **No manual registration**: Solvers register themselves automatically
-- **Derive macro**: Eliminates boilerplate with `#[derive(AocSolver)]`
+- **Derive macro**: Eliminates boilerplate with `#[derive(AutoRegisterSolver)]`
 - **Modular**: Define solvers in separate modules or crates
 - **Flexible filtering**: Register subsets based on tags, year, or custom predicates
 - **Environment-specific**: Different solver sets for dev, test, and production

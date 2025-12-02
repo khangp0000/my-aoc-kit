@@ -26,16 +26,16 @@ HTTP client for interacting with the Advent of Code website.
 - Well-typed error handling
 
 ### [aoc-solver-macros](./aoc-solver-macros/)
-Procedural macros for the aoc-solver library, providing the `#[derive(AocSolver)]` macro for automatic solver registration.
+Procedural macros for the aoc-solver library, providing the `#[derive(AutoRegisterSolver)]` macro for automatic solver registration.
 
 ## Quick Start
 
 ```rust
-use aoc_solver::{AocSolver, Solver, ParseError, PartResult, SolveError};
+use aoc_solver::{AutoRegisterSolver, Solver, ParseError, PartResult, SolveError};
 use aoc_http_client::AocClient;
 
 // Define a solver with automatic registration
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2024, day = 1)]
 pub struct Day1Solver;
 

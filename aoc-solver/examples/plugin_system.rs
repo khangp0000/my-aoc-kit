@@ -6,7 +6,7 @@
 //! Run with: cargo run --example plugin_system
 
 use aoc_solver::{
-    AocSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver, SolverPlugin,
+    AutoRegisterSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver, SolverPlugin,
 };
 
 // ============================================================================
@@ -14,7 +14,7 @@ use aoc_solver::{
 // Using the derive macro (RECOMMENDED)
 // ============================================================================
 
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["easy", "2023"])]
 pub struct PluginDay1;
 
@@ -149,7 +149,7 @@ inventory::submit! {
 // Plugin Day 4: Using the derive macro (RECOMMENDED APPROACH)
 // ============================================================================
 
-#[derive(AocSolver)]
+#[derive(AutoRegisterSolver)]
 #[aoc(year = 2024, day = 4, tags = ["derive", "easy"])]
 pub struct PluginDay4Derive;
 

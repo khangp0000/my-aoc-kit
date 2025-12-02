@@ -15,13 +15,27 @@ use syn::{parse_macro_input, DeriveInput, Lit};
 /// - `day`: Required. The day number (1-25)
 /// - `tags`: Optional. Array of string literals for filtering (e.g., ["easy", "parsing"])
 ///
+/// # Requirements
+///
+/// The type must implement the `Solver` trait. If the trait is not implemented,
+/// you will get a clear compile-time error:
+///
+/// ```text
+/// error[E0277]: the trait bound `YourSolver: Solver` is not satisfied
+///   |
+///   | struct YourSolver;
+///   |        ^^^^^^^^^^ unsatisfied trait bound
+///   |
+/// help: the trait `Solver` is not implemented for `YourSolver`
+/// ```
+///
 /// # Example
 ///
 /// ```ignore
 /// use aoc_solver::{Solver, ParseError, PartResult, SolveError};
-/// use aoc_solver_macros::AocSolver;
+/// use aoc_solver_macros::AutoRegisterSolver;
 ///
-/// #[derive(AocSolver)]
+/// #[derive(AutoRegisterSolver)]
 /// #[aoc(year = 2023, day = 1, tags = ["easy", "parsing"])]
 /// struct Day1Solver;
 ///
@@ -29,8 +43,8 @@ use syn::{parse_macro_input, DeriveInput, Lit};
 ///     // ... implementation
 /// }
 /// ```
-#[proc_macro_derive(AocSolver, attributes(aoc))]
-pub fn derive_aoc_solver(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(AutoRegisterSolver, attributes(aoc))]
+pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     
     // Extract the struct name
@@ -39,7 +53,7 @@ pub fn derive_aoc_solver(input: TokenStream) -> TokenStream {
     // Find the #[aoc(...)] attribute
     let aoc_attr = input.attrs.iter()
         .find(|attr| attr.path().is_ident("aoc"))
-        .expect("AocSolver derive macro requires #[aoc(...)] attribute");
+        .expect("AutoRegisterSolver derive macro requires #[aoc(...)] attribute");
     
     // Parse the attribute arguments
     let mut year: Option<u32> = None;
@@ -88,8 +102,16 @@ pub fn derive_aoc_solver(input: TokenStream) -> TokenStream {
         quote! { &[#(#tag_strs),*] }
     };
     
-    // Generate the code
+    // Generate the code with a compile-time trait bound check
     let expanded = quote! {
+        // Compile-time check that the type implements Solver trait
+        // This generates a helpful error message if the trait is not implemented
+        const _: () = {
+            // Custom trait to provide a better error message
+            trait MustImplementSolver: ::aoc_solver::Solver {}
+            impl MustImplementSolver for #name {}
+        };
+        
         ::aoc_solver::inventory::submit! {
             ::aoc_solver::SolverPlugin {
                 year: #year,
