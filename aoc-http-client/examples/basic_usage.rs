@@ -15,8 +15,7 @@ use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get session cookie from environment variable
-    let session = std::env::var("AOC_SESSION")
-        .expect("AOC_SESSION environment variable not set");
+    let session = std::env::var("AOC_SESSION").expect("AOC_SESSION environment variable not set");
 
     // Example 1: Create a client with default settings
     println!("=== Example 1: Default Client ===");
@@ -26,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example 2: Create a client with custom base URL (useful for testing)
     println!("\n=== Example 2: Custom Base URL ===");
     let _custom_client = AocClient::builder()
-        .base_url("https://adventofcode.com")?  // Could be a mock server URL for testing
+        .base_url("https://adventofcode.com")? // Could be a mock server URL for testing
         .build()?;
     println!("✓ Client created with custom base URL");
 
@@ -36,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .client_builder(
             reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(30))
-                .use_rustls_tls()
+                .use_rustls_tls(),
         )
         .build()?;
     println!("✓ Client created with custom timeout (30s)");
@@ -62,7 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(input) => {
             println!("✓ Input fetched successfully");
             println!("Input length: {} bytes", input.len());
-            println!("First 100 chars: {}", &input.chars().take(100).collect::<String>());
+            println!(
+                "First 100 chars: {}",
+                &input.chars().take(100).collect::<String>()
+            );
         }
         Err(e) => {
             println!("✗ Failed to fetch input: {}", e);

@@ -31,7 +31,8 @@ Procedural macros for the aoc-solver library, providing the `#[derive(AutoRegist
 ## Quick Start
 
 ```rust
-use aoc_solver::{AutoRegisterSolver, Solver, ParseError, PartResult, SolveError};
+use std::borrow::Cow;
+use aoc_solver::{AutoRegisterSolver, Solver, ParseError, SolveError};
 use aoc_http_client::AocClient;
 
 // Define a solver with automatic registration
@@ -40,30 +41,23 @@ use aoc_http_client::AocClient;
 pub struct Day1Solver;
 
 impl Solver for Day1Solver {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input.lines()
             .map(|line| line.parse().map_err(|_| 
                 ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
-            1 => Ok(PartResult {
-                answer: parsed.iter().sum::<i32>().to_string(),
-                partial: None,
-            }),
-            2 => Ok(PartResult {
-                answer: parsed.iter().product::<i32>().to_string(),
-                partial: None,
-            }),
+            1 => Ok(shared.iter().sum::<i32>().to_string()),
+            2 => Ok(shared.iter().product::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
         }
     }

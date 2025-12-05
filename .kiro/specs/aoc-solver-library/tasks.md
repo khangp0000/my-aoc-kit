@@ -5,7 +5,7 @@
 **✅ IMPLEMENTATION COMPLETE**
 
 All core functionality has been implemented and is working. The library is feature-complete with:
-- ✅ Core traits and types (Solver, DynSolver, PartResult)
+- ✅ Core traits and types (Solver, DynSolver, SharedData)
 - ✅ Error handling with Result-based API (improved from spec)
 - ✅ Builder pattern with immutable registry
 - ✅ Plugin system with inventory
@@ -36,31 +36,27 @@ The library is production-ready and fully satisfies all 11 requirements from the
   - Add `thiserror` crate to simplify error trait implementations (optional but recommended)
   - _Requirements: 1.4, 2.4_
 
-- [x] 2. Implement Solver trait and PartResult
-  - Define the `Solver` trait with associated types `Parsed` and `PartialResult`
-  - Add `parse` method: `fn parse(input: &str) -> Result<Self::Parsed, ParseError>`
-  - Add `solve_part` method: `fn solve_part(parsed: &Self::Parsed, part: usize, previous_partial: Option<&Self::PartialResult>) -> Option<PartResult<Self::PartialResult>>`
-  - Create `PartResult<T>` struct with fields: `answer: String` and `partial: Option<T>`
+- [x] 2. Implement Solver trait
+  - Define the `Solver` trait with associated type `SharedData`
+  - Add `parse` method: `fn parse(input: &str) -> Result<Self::SharedData, ParseError>`
+  - Add `solve_part` method: `fn solve_part(shared: &mut Self::SharedData, part: usize) -> Result<String, SolveError>`
   - Add trait documentation explaining the contract
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 8.1, 8.2_
 
 - [x] 3. Implement SolverInstance struct
-  - Create `SolverInstance<S: Solver>` struct with fields: `year: u32`, `day: u32`, `parsed: S::Parsed`, `results: Vec<Option<String>>`, `partial_results: Vec<Option<S::PartialResult>>`
-  - Implement `new(year: u32, day: u32, parsed: S::Parsed) -> Self` constructor
-  - Initialize with empty vectors for results and partial_results
+  - Create `SolverInstance<S: Solver>` struct with fields: `year: u32`, `day: u32`, `shared: S::SharedData`
+  - Implement `new(year: u32, day: u32, shared: S::SharedData) -> Self` constructor
   - _Requirements: 1.1, 4.1, 4.2_
 
 - [x] 4. Implement DynSolver trait
-  - Define `DynSolver` trait with methods: `solve(&mut self, part: usize) -> Option<String>`, `results(&self) -> &[Option<String>]`, `year(&self) -> u32`, `day(&self) -> u32`
-  - Add comprehensive documentation explaining that `solve()` recomputes and caches, while `results()` returns cached values
+  - Define `DynSolver` trait with methods: `solve(&mut self, part: usize) -> Result<String, SolveError>`, `year(&self) -> u32`, `day(&self) -> u32`
+  - Add comprehensive documentation explaining that `solve()` computes the result for a specific part
   - _Requirements: 3.1, 4.3, 6.1, 6.2_
 
 - [x] 5. Implement DynSolver for SolverInstance
   - Implement `solve` method that:
-    - Retrieves previous partial result (if part > 1, get from index part-2)
-    - Calls `S::solve_part` with parsed data and previous partial
-    - Resizes vectors if needed to accommodate the part index
-    - Stores answer string at index part-1
+    - Calls `S::solve_part` with mutable access to shared data
+    - Returns the answer string directly
     - Stores partial result at index part-1
     - Returns the answer string
   - Implement `results` method returning `&self.results`
@@ -82,18 +78,18 @@ The library is production-ready and fully satisfies all 11 requirements from the
 - [x] 7. Create register_solver! macro
   - Define `register_solver!` macro with parameters: `($registry:expr, $solver:ty, $year:expr, $day:expr)`
   - Macro should expand to call `$registry.register($year, $day, |input: &str| { ... })`
-  - Factory closure should: call `<$solver>::parse(input)`, create `SolverInstance::new($year, $day, parsed)`, box as `Box<dyn DynSolver>`
+  - Factory closure should: call `<$solver>::parse(input)`, create `SolverInstance::new($year, $day, shared)`, box as `Box<dyn DynSolver>`
   - _Requirements: 5.1, 5.2, 6.4_
 
 - [x] 8. Create example solver with independent parts
   - Create `src/solvers/mod.rs` module file
   - Create `src/solvers/example_independent.rs`
   - Define `ExampleIndependent` struct
-  - Implement `Solver` trait with `type Parsed = Vec<i32>` and `type PartialResult = ()`
+  - Implement `Solver` trait with `type SharedData = Vec<i32>`
   - Parse input as lines of integers
   - Implement Part 1: sum all numbers
   - Implement Part 2: product of all numbers
-  - Both parts return `PartResult { answer, partial: None }`
+  - Both parts return String directly
   - Include 6 unit tests in the example file (parsing, solving, error handling)
   - _Requirements: 1.1, 1.2, 2.1, 3.1, 8.3_
 
@@ -102,9 +98,9 @@ The library is production-ready and fully satisfies all 11 requirements from the
 - [x] 9. Create example solver with dependent parts
   - Create `src/solvers/example_dependent.rs`
   - Define `ExampleDependent` struct
-  - Define custom `PartialResult` struct (e.g., `Part1Data { sum: i32, count: usize }`)
-  - Implement `Solver` trait with `type Parsed = Vec<i32>` and `type PartialResult = Part1Data`
-  - Implement Part 1: calculate sum and count, return both as answer and partial
+  - Define custom `SharedData` struct (e.g., `SharedData { numbers: Vec<i32>, sum: Option<i32>, count: Option<usize> }`)
+  - Implement `Solver` trait with `type SharedData = SharedData`
+  - Implement Part 1: calculate sum and count, store in SharedData fields
   - Implement Part 2: use Part 1's data if available (calculate average), or compute independently
   - Include 5 unit tests in the example file (partial results, independence, edge cases)
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
@@ -119,7 +115,7 @@ The library is production-ready and fully satisfies all 11 requirements from the
 - [x] 11. Create documentation and usage example
   - Add module-level documentation to `lib.rs` explaining the library purpose
   - Add comprehensive doc comments to `Solver` trait with usage example
-  - Add doc comments to `DynSolver` trait explaining `solve()` vs `results()` behavior
+  - Add doc comments to `DynSolver` trait explaining `solve()` behavior
   - Create `README.md` with complete usage example showing both independent and dependent solvers
   - Include example of registering solvers and using the registry
   - _Requirements: 6.1, 6.2, 6.3_
@@ -137,7 +133,7 @@ The library is production-ready and fully satisfies all 11 requirements from the
 - [x] 14. Refactor lib.rs into modular structure
   - Split large `lib.rs` into focused modules
   - Create `src/error.rs` for error types
-  - Create `src/solver.rs` for Solver trait and PartResult
+  - Create `src/solver.rs` for Solver trait
   - Create `src/instance.rs` for SolverInstance and DynSolver
   - Create `src/registry.rs` for SolverRegistry and macro
   - Update `lib.rs` to re-export public API
@@ -170,7 +166,7 @@ The library is production-ready and fully satisfies all 11 requirements from the
 
 - [x] 18. Improve error handling with Result-based API
   - Add `SolveError` enum with `PartNotImplemented` and `SolveFailed` variants
-  - Update `Solver::solve_part` to return `Result<PartResult, SolveError>`
+  - Update `Solver::solve_part` to return `Result<String, SolveError>`
   - Update `DynSolver::solve` to return `Result<String, SolveError>`
   - Update all examples to use new error handling
   - Update all doc tests to use new API
@@ -346,7 +342,7 @@ The library is feature-complete and ready for use:
 
 ### Implementation Highlights
 
-1. **Improved Error Handling**: Uses `Result<PartResult, SolveError>` instead of `Option` for better error distinction
+1. **Improved Error Handling**: Uses `Result<String, SolveError>` instead of `Option` for better error distinction
 2. **Type-Safe Design**: Full compile-time type checking with zero-cost abstractions
 3. **Clean Architecture**: Modular structure with clear separation of concerns
 4. **Developer Experience**: Derive macro eliminates boilerplate, fluent builder API
@@ -376,26 +372,27 @@ aoc-solver-library/
 ### How to Use
 
 ```rust
-use aoc_solver::{Solver, AutoRegisterSolver, RegistryBuilder};
+use std::borrow::Cow;
+use aoc_solver::{Solver, AutoRegisterSolver, RegistryBuilder, ParseError, SolveError};
 
 #[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["easy"])]
 struct MySolver;
 
 impl Solver for MySolver {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-        // parsing logic
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        // parsing logic - return Cow::Owned for owned data
+        Ok(Cow::Owned(vec![1, 2, 3]))
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
-        // solving logic
+    ) -> Result<String, SolveError> {
+        // solving logic - use shared.to_mut() if mutation needed
+        Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
@@ -412,6 +409,21 @@ let answer = solver.solve(1)?;
 
 The remaining tasks (marked with `*`) are optional property-based tests that can be added for additional coverage if desired, but are not required for the library to function. The library has comprehensive unit test coverage and is production-ready as-is.
 
+- [x] 34. Implement zero-copy parsing with Cow
+  - Update `Solver` trait to use `Cow<'_, SharedData>` in `parse` return type
+  - Update `Solver::solve_part` to take `&mut Cow<'_, SharedData>` parameter
+  - Add `ToOwned + ?Sized` bound to `SharedData` with `Clone` constraint on owned type
+  - Create `SolverInstanceCow<'a, S>` to hold `Cow<'a, S::SharedData>` directly
+  - Update `SolverInstance` to wrap data in `Cow::Borrowed` when solving
+  - Update `aoc_solver` macro to generate correct `Cow` signatures and call `.to_mut()` for part functions
+  - Update all manual `Solver` implementations to use `Cow` types
+  - Update all tests to work with `Cow` types
+  - Update all examples to demonstrate zero-copy patterns
+  - Add `#[derive(Clone)]` to all solver structs and shared data types
+  - Add comprehensive documentation about zero-copy design and usage patterns
+  - Verify all tests pass and examples run correctly
+  - _Benefits: Zero allocations for read-only operations, lazy cloning only when mutation needed, solver control over memory strategy_
+
 ### Verification Commands
 
 ```bash
@@ -422,6 +434,7 @@ cargo test --workspace
 cargo run -p aoc-solver --example independent_parts
 cargo run -p aoc-solver --example dependent_parts
 cargo run -p aoc-solver --example plugin_system
+cargo run -p aoc-solver --example macro_usage
 
 # Build library
 cargo build --lib

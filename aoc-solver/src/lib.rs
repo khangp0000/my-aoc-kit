@@ -16,40 +16,40 @@
 //! # Quick Example
 //!
 //! ```
-//! use aoc_solver::{Solver, ParseError, PartResult, SolveError, RegistryBuilder, register_solver};
+//! use aoc_solver::{ParseError, RegistryBuilder, SolveError, Solver, SolverInstanceCow};
+//! use std::borrow::Cow;
 //!
 //! // Define a solver
 //! pub struct MyDay1;
 //!
 //! impl Solver for MyDay1 {
-//!     type Parsed = Vec<i32>;
-//!     type PartialResult = ();
+//!     type SharedData = Vec<i32>;
 //!     
-//!     fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+//!     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 //!         input.lines()
-//!             .map(|line| line.parse().map_err(|_| 
+//!             .map(|line| line.parse().map_err(|_|
 //!                 ParseError::InvalidFormat("Expected integer".to_string())))
-//!             .collect()
+//!             .collect::<Result<Vec<_>, _>>()
+//!             .map(Cow::Owned)
 //!     }
 //!     
 //!     fn solve_part(
-//!         parsed: &Self::Parsed,
+//!         shared: &mut Cow<'_, Self::SharedData>,
 //!         part: usize,
-//!         _previous_partial: Option<&Self::PartialResult>,
-//!     ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+//!     ) -> Result<String, SolveError> {
 //!         match part {
-//!             1 => Ok(PartResult {
-//!                 answer: parsed.iter().sum::<i32>().to_string(),
-//!                 partial: None,
-//!             }),
+//!             1 => Ok(shared.iter().sum::<i32>().to_string()),
 //!             _ => Err(SolveError::PartNotImplemented(part)),
 //!         }
 //!     }
 //! }
 //!
 //! // Use the solver with builder pattern
-//! let mut builder = RegistryBuilder::new();
-//! register_solver!(builder, MyDay1, 2023, 1);
+//! let builder = RegistryBuilder::new();
+//! let builder = builder.register(2023, 1, |input: &str| {
+//!     let shared = MyDay1::parse(input)?;
+//!     Ok(Box::new(SolverInstanceCow::<MyDay1>::new(2023, 1, shared)))
+//! }).unwrap();
 //! let registry = builder.build();
 //!
 //! let mut solver = registry.create_solver(2023, 1, "1\n2\n3").unwrap();
@@ -62,16 +62,14 @@
 //! ## Solver Trait
 //!
 //! The [`Solver`] trait is the core interface. Implement it to define:
-//! - How to parse input (`Parsed` type and `parse()` method)
-//! - What data to share between parts (`PartialResult` type)
-//! - How to solve each part (`solve_part()` method)
+//! - How to parse input (`SharedData` type and `parse()` method)
+//! - How to solve each part (`solve_part()` method with mutable access to shared data)
 //!
 //! ## DynSolver Trait
 //!
 //! The [`DynSolver`] trait provides type erasure for working with different solver types uniformly.
 //! Key methods:
-//! - `solve(part)`: Computes and caches the result
-//! - `results()`: Returns cached results without recomputation
+//! - `solve(part)`: Computes the result for a specific part
 //!
 //! ## Plugin System and Derive Macro
 //!
@@ -84,22 +82,24 @@
 //!
 //! ## Part Dependencies
 //!
-//! Parts can be:
-//! - **Independent**: Use `type PartialResult = ()` and return `partial: None`
-//! - **Dependent**: Define a custom `PartialResult` type and pass data between parts
+//! Parts can share data through mutations to the `SharedData` structure:
+//! - **Independent**: Parts don't modify shared data
+//! - **Dependent**: Part 1 stores data in `SharedData`, Part 2 reads it
 //!
 //! See the examples directory for complete demonstrations.
 
 mod error;
-mod solver;
 mod instance;
 mod registry;
+mod solver;
 
 // Re-export public API
 pub use error::{ParseError, RegistrationError, SolveError, SolverError};
-pub use instance::{DynSolver, SolverInstance};
-pub use registry::{RegisterableSolver, RegistryBuilder, SolverFactory, SolverPlugin, SolverRegistry};
-pub use solver::{PartResult, Solver};
+pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
+pub use registry::{
+    RegisterableSolver, RegistryBuilder, SolverFactory, SolverPlugin, SolverRegistry,
+};
+pub use solver::Solver;
 
 // Re-export inventory for use by the derive macro
 pub use inventory;

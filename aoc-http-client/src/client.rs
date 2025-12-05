@@ -1,6 +1,7 @@
 //! AOC HTTP client implementation
 
 use crate::error::AocError;
+use crate::parser::ResponseParser;
 use reqwest::header::HeaderValue;
 use std::time::Duration;
 use zeroize::Zeroize;
@@ -58,7 +59,7 @@ pub enum SubmissionResult {
 pub struct AocClient {
     client: reqwest::blocking::Client,
     base_url: reqwest::Url,
-    parser: crate::parser::ResponseParser,
+    parser: ResponseParser,
 }
 
 impl AocClient {
@@ -108,12 +109,12 @@ impl AocClient {
         let mut cookie_string = format!("session={}", session);
         let header_value = HeaderValue::from_bytes(cookie_string.as_bytes())
             .map_err(|_| AocError::ClientInit("Invalid session cookie format".to_string()))?;
-        
+
         // Mark as sensitive and zeroize the temporary string
         let mut sensitive_header = header_value;
         sensitive_header.set_sensitive(true);
         cookie_string.zeroize();
-        
+
         Ok(sensitive_header)
     }
 
@@ -153,14 +154,14 @@ impl AocClient {
     /// ```
     pub fn verify_session(&self, session: &str) -> Result<SessionInfo, AocError> {
         let cookie_header = Self::create_cookie_header(session)?;
-        
+
         // Construct URL using path segments
         let mut url = self.base_url.clone();
         url.path_segments_mut()
             .map_err(|_| AocError::ClientInit("Cannot modify base URL path".to_string()))?
             .clear()
             .push("settings");
-        
+
         let response = self
             .client
             .get(url)
@@ -223,7 +224,7 @@ impl AocClient {
             .map_err(|_| AocError::ClientInit("Cannot modify base URL path".to_string()))?
             .clear()
             .extend(&[&year.to_string(), "day", &day.to_string(), "input"]);
-        
+
         let response = self
             .client
             .get(url)
@@ -296,16 +297,16 @@ impl AocClient {
         session: &str,
     ) -> Result<SubmissionResult, AocError> {
         let cookie_header = Self::create_cookie_header(session)?;
-        
+
         // Construct URL using path segments
         let mut url = self.base_url.clone();
         url.path_segments_mut()
             .map_err(|_| AocError::ClientInit("Cannot modify base URL path".to_string()))?
             .clear()
             .extend(&[&year.to_string(), "day", &day.to_string(), "answer"]);
-        
+
         let form = [("level", part.to_string()), ("answer", answer.to_string())];
-        
+
         let response = self
             .client
             .post(url)
@@ -466,9 +467,9 @@ impl AocClientBuilder {
         });
 
         // Use provided client builder or create default with rustls-tls
-        let builder = self.client_builder.unwrap_or_else(|| {
-            reqwest::blocking::Client::builder().use_rustls_tls()
-        });
+        let builder = self
+            .client_builder
+            .unwrap_or_else(|| reqwest::blocking::Client::builder().use_rustls_tls());
 
         // Always override redirect policy to none for session verification
         let client = builder
@@ -479,7 +480,7 @@ impl AocClientBuilder {
         Ok(AocClient {
             client,
             base_url,
-            parser: crate::parser::ResponseParser::new(),
+            parser: ResponseParser::new(),
         })
     }
 }
@@ -499,7 +500,7 @@ mod tests {
     // **Validates: Requirements 10.3**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_base_url_configuration(
             scheme in prop::sample::select(vec!["http", "https"]),
@@ -508,14 +509,14 @@ mod tests {
         ) {
             // Construct a valid base URL
             let base_url = format!("{}://{}:{}", scheme, host, port);
-            
+
             // Build client with custom base URL
             let client = AocClient::builder()
                 .base_url(&base_url)
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Verify the base URL is set correctly
             prop_assert_eq!(client.base_url.scheme(), scheme);
             prop_assert_eq!(client.base_url.host_str(), Some(host.as_str()));
@@ -527,12 +528,12 @@ mod tests {
     // **Validates: Requirements 10.2**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_default_base_url(_dummy in 0u8..10u8) {
             // Create client without specifying base URL
             let client = AocClient::builder().build().unwrap();
-            
+
             // Verify default base URL is used
             prop_assert_eq!(client.base_url.as_str(), "https://adventofcode.com/");
         }
@@ -542,7 +543,7 @@ mod tests {
     // **Validates: Requirements 11.3, 11.4**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_custom_client_builder_configuration(
             timeout_secs in 1u64..120u64,
@@ -551,12 +552,12 @@ mod tests {
             let custom_builder = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(timeout_secs))
                 .use_rustls_tls();
-            
+
             // Build client with custom ClientBuilder
             let result = AocClient::builder()
                 .client_builder(custom_builder)
                 .build();
-            
+
             // Verify client builds successfully
             prop_assert!(result.is_ok());
         }
@@ -567,35 +568,37 @@ mod tests {
     #[test]
     fn test_redirect_policy_enforcement() {
         let mut server = mockito::Server::new();
-        
+
         // Mock the base path (where redirect would go if followed)
-        let base_mock = server.mock("GET", "/")
+        let base_mock = server
+            .mock("GET", "/")
             .with_status(200)
             .with_body("<html><body>Home page</body></html>")
             .expect(0) // Should NOT be called if redirects are disabled
             .create();
-        
+
         // Mock a redirect response at /settings
-        let settings_mock = server.mock("GET", "/settings")
+        let settings_mock = server
+            .mock("GET", "/settings")
             .with_status(303)
             .with_header("location", "/")
             .expect(1) // Should be called exactly once
             .create();
-        
+
         // Build client with default settings (tests that redirect policy is enforced by default)
         let client = AocClient::builder()
             .base_url(&server.url())
             .unwrap()
             .build()
             .unwrap();
-        
+
         // Verify session - should get the 303 directly without following redirect
         let result = client.verify_session("test_session");
         assert!(result.is_ok());
         // 303 means invalid session (redirect to homepage)
         let info = result.unwrap();
         assert!(info.user_id.is_none());
-        
+
         // Verify expectations
         base_mock.assert();
         settings_mock.assert();
@@ -603,9 +606,8 @@ mod tests {
 
     #[test]
     fn test_invalid_base_url() {
-        let result = AocClient::builder()
-            .base_url("not a valid url");
-        
+        let result = AocClient::builder().base_url("not a valid url");
+
         assert!(result.is_err());
     }
 
@@ -613,14 +615,14 @@ mod tests {
     // **Validates: Requirements 1.1**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_session_validation_200_is_valid(
             session in "[a-f0-9]{32,128}",
             user_id in 100000u64..999999u64,
         ) {
             let mut server = mockito::Server::new();
-            
+
             // Mock a 200 OK response with user ID in HTML
             let body = format!(r#"<html><body>Settings page (anonymous user #{})</body></html>"#, user_id);
             let mock = server.mock("GET", "/settings")
@@ -628,22 +630,22 @@ mod tests {
                 .with_body(&body)
                 .expect(1)
                 .create();
-            
+
             // Build client with mock server URL
             let client = AocClient::builder()
                 .base_url(&server.url())
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Verify session - 200 should mean valid authentication
             let result = client.verify_session(&session);
             prop_assert!(result.is_ok(), "verify_session should not return an error");
-            
+
             let info = result.unwrap();
             prop_assert!(info.user_id.is_some(), "200 status should indicate valid session with user ID");
             prop_assert_eq!(info.user_id.unwrap(), user_id, "User ID should match");
-            
+
             // Verify mock was called
             mock.assert();
         }
@@ -653,40 +655,40 @@ mod tests {
     // **Validates: Requirements 1.2, 1.3**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_session_validation_redirects_and_errors_are_invalid(
             session in "[a-f0-9]{32,128}",
             status_code in prop::sample::select(vec![301, 302, 303, 307, 308, 400, 401, 403, 404, 500, 502, 503]),
         ) {
             let mut server = mockito::Server::new();
-            
+
             // Mock a redirect or error response (should indicate invalid session per spec)
             let mock_builder = server.mock("GET", "/settings")
                 .with_status(status_code)
                 .expect(1);
-            
+
             // Add location header for redirects
             let mock = if status_code >= 300 && status_code < 400 {
                 mock_builder.with_header("location", "/").create()
             } else {
                 mock_builder.create()
             };
-            
+
             // Build client with mock server URL
             let client = AocClient::builder()
                 .base_url(&server.url())
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Verify session - redirects and error status codes should mean invalid authentication
             let result = client.verify_session(&session);
             prop_assert!(result.is_ok(), "verify_session should not return an error for HTTP redirects/errors");
-            
+
             let info = result.unwrap();
             prop_assert!(info.user_id.is_none(), "Redirect and error status codes should indicate invalid session");
-            
+
             // Verify mock was called
             mock.assert();
         }
@@ -696,7 +698,7 @@ mod tests {
     // **Validates: Requirements 2.1**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_input_url_construction(
             year in 2015u16..2030u16,
@@ -704,27 +706,27 @@ mod tests {
             session in "[a-f0-9]{32,128}",
         ) {
             let mut server = mockito::Server::new();
-            
+
             // Construct the expected path
             let expected_path = format!("/{}/day/{}/input", year, day);
-            
+
             // Mock the input endpoint
             let mock = server.mock("GET", expected_path.as_str())
                 .with_status(200)
                 .with_body("test input data")
                 .expect(1)
                 .create();
-            
+
             // Build client with mock server URL
             let client = AocClient::builder()
                 .base_url(&server.url())
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Fetch input - this should construct the correct URL
             let result = client.get_input(year, day, &session);
-            
+
             // Property: URL construction should succeed for valid year/day values
             prop_assert!(
                 result.is_ok(),
@@ -732,10 +734,10 @@ mod tests {
                 year,
                 day
             );
-            
+
             // Property: the correct endpoint should be called
             mock.assert();
-            
+
             // Property: the response body should be returned
             prop_assert_eq!(
                 result.unwrap(),
@@ -749,7 +751,7 @@ mod tests {
     // **Validates: Requirements 3.1, 3.2**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_submission_request_construction(
             year in 2015u16..2030u16,
@@ -759,10 +761,10 @@ mod tests {
             session in "[a-f0-9]{32,128}",
         ) {
             let mut server = mockito::Server::new();
-            
+
             // Construct the expected path
             let expected_path = format!("/{}/day/{}/answer", year, day);
-            
+
             // Mock the submission endpoint with form data matcher
             let mock = server.mock("POST", expected_path.as_str())
                 .match_body(
@@ -775,17 +777,17 @@ mod tests {
                 .with_body(r#"<html><body><main>That's the right answer!</main></body></html>"#)
                 .expect(1)
                 .create();
-            
+
             // Build client with mock server URL
             let client = AocClient::builder()
                 .base_url(&server.url())
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Submit answer - this should construct the correct URL and form data
             let result = client.submit_answer(year, day, part, &answer, &session);
-            
+
             // Property: submission should succeed for valid parameters
             prop_assert!(
                 result.is_ok(),
@@ -795,10 +797,10 @@ mod tests {
                 part,
                 answer
             );
-            
+
             // Property: the correct endpoint should be called with correct form data
             mock.assert();
-            
+
             // Property: the response should be parsed correctly
             prop_assert_eq!(
                 result.unwrap(),
@@ -812,7 +814,7 @@ mod tests {
     // **Validates: Requirements 7.4**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_non_success_status_error_handling(
             year in 2015u16..2030u16,
@@ -822,34 +824,34 @@ mod tests {
             status_code in prop::sample::select(vec![400, 401, 403, 404, 429, 500, 502, 503, 504]),
         ) {
             let mut server = mockito::Server::new();
-            
+
             // Construct the expected path
             let expected_path = format!("/{}/day/{}/input", year, day);
-            
+
             // Mock the input endpoint with non-success status
             let mock = server.mock("GET", expected_path.as_str())
                 .with_status(status_code)
                 .with_body("Error response")
                 .expect(1)
                 .create();
-            
+
             // Build client with mock server URL
             let client = AocClient::builder()
                 .base_url(&server.url())
                 .unwrap()
                 .build()
                 .unwrap();
-            
+
             // Fetch input - this should fail with InvalidStatus error
             let result = client.get_input(year, day, &session);
-            
+
             // Property: non-success status should result in an error
             prop_assert!(
                 result.is_err(),
                 "get_input should return an error for non-success status code {}",
                 status_code
             );
-            
+
             // Property: error should be InvalidStatus with the correct status code
             match result.unwrap_err() {
                 AocError::InvalidStatus { status } => {
@@ -867,7 +869,7 @@ mod tests {
                     );
                 }
             }
-            
+
             // Property: the endpoint should have been called
             mock.assert();
         }

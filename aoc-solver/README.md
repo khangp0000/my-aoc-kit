@@ -4,13 +4,12 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 
 ## Features
 
-- **Type-safe solver interface**: Each solver defines its own parsed data type and partial result type
-- **Flexible part dependencies**: Support for both independent and dependent parts
+- **Type-safe solver interface**: Each solver defines its own shared data type
+- **Flexible part dependencies**: Parts can share data through mutations to shared state
 - **Builder pattern**: Fluent API for registry construction with compile-time immutability guarantees
 - **Plugin system**: Automatic solver discovery and registration using the `inventory` crate
 - **Derive macro**: Zero-boilerplate solver registration with `#[derive(AutoRegisterSolver)]`
 - **Flexible filtering**: Register solvers by tags, year, or custom predicates
-- **Caching**: Results are cached to avoid redundant computation
 - **Extensible**: Add new solvers without modifying the core library
 
 ## Quick Start
@@ -18,35 +17,29 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 ### 1. Define a Solver
 
 ```rust
-use aoc_solver::{Solver, ParseError, PartResult, SolveError};
+use std::borrow::Cow;
+use aoc_solver::{Solver, ParseError, SolveError};
 
 pub struct Day1Solver;
 
 impl Solver for Day1Solver {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();  // No data shared between parts
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input.lines()
             .map(|line| line.parse().map_err(|_| 
                 ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
-            1 => Ok(PartResult {
-                answer: parsed.iter().sum::<i32>().to_string(),
-                partial: None,
-            }),
-            2 => Ok(PartResult {
-                answer: parsed.iter().product::<i32>().to_string(),
-                partial: None,
-            }),
+            1 => Ok(shared.iter().sum::<i32>().to_string()),
+            2 => Ok(shared.iter().product::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
         }
     }
@@ -77,10 +70,6 @@ fn main() {
         Ok(answer) => println!("Part 2: {}", answer),  // Part 2: 120
         Err(e) => eprintln!("Error: {}", e),
     }
-    
-    // Access cached results
-    let all_results = solver.results();
-    println!("All results: {:?}", all_results);
 }
 ```
 
@@ -98,8 +87,7 @@ struct Day1;  // Define the struct
 
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
         input.lines()
@@ -108,12 +96,12 @@ impl Day1 {
             .collect()
     }
     
-    fn part1(parsed: &Vec<i32>) -> String {
-        parsed.iter().sum::<i32>().to_string()
+    fn part1(shared: &mut Vec<i32>) -> String {
+        shared.iter().sum::<i32>().to_string()
     }
     
-    fn part2(parsed: &Vec<i32>) -> String {
-        parsed.iter().product::<i32>().to_string()
+    fn part2(shared: &mut Vec<i32>) -> String {
+        shared.iter().product::<i32>().to_string()
     }
 }
 ```
@@ -125,33 +113,28 @@ The macro generates:
 
 ### Flexible Return Types
 
-Part functions support multiple return types:
+Part functions support two return types:
 
 ```rust
 struct Day2;
 
-#[aoc_solver(max_parts = 3)]
+#[aoc_solver(max_parts = 2)]
 impl Day2 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
     
     // Simple string return
-    fn part1(parsed: &Vec<i32>) -> String {
+    fn part1(shared: &mut Vec<i32>) -> String {
         "42".to_string()
     }
     
     // Result for error handling
-    fn part2(parsed: &Vec<i32>) -> Result<String, SolveError> {
-        Ok("answer".to_string())
-    }
-    
-    // Full control with PartResult
-    fn part3(parsed: &Vec<i32>) -> PartResult<()> {
-        PartResult {
-            answer: "answer".to_string(),
-            partial: None,
+    fn part2(shared: &mut Vec<i32>) -> Result<String, SolveError> {
+        if shared.is_empty() {
+            Err(SolveError::SolveFailed("Empty input".into()))
+        } else {
+            Ok("answer".to_string())
         }
     }
 }
@@ -159,46 +142,62 @@ impl Day2 {
 
 ### Dependent Parts
 
-For parts that share data, use `PartResult` and add a `prev` parameter:
+For parts that share data, use mutable access to SharedData:
 
 ```rust
-use aoc_solver::PartResult;
-
-#[derive(Clone)]
-struct SumCount {
-    sum: i32,
-    count: usize,
+#[derive(Debug)]
+struct SharedData {
+    numbers: Vec<i32>,
+    sum: Option<i32>,
+    count: Option<usize>,
 }
 
 struct Day3;
 
 #[aoc_solver(max_parts = 2)]
 impl Day3 {
-    type Parsed = Vec<i32>;
-    type PartialResult = SumCount;
+    type SharedData = SharedData;
     
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    
-    // Part 1 returns data for Part 2
-    fn part1(parsed: &Vec<i32>) -> PartResult<SumCount> {
-        let sum: i32 = parsed.iter().sum();
-        PartResult {
-            answer: sum.to_string(),
-            partial: Some(SumCount { sum, count: parsed.len() }),
-        }
+    fn parse(input: &str) -> Result<SharedData, ParseError> {
+        let numbers: Vec<i32> = input.lines()
+            .map(|line| line.parse().map_err(|_| 
+                ParseError::InvalidFormat("Expected integer".into())))
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(SharedData {
+            numbers,
+            sum: None,
+            count: None,
+        })
     }
     
-    // Part 2 receives Part 1's data
-    fn part2(parsed: &Vec<i32>, prev: Option<&SumCount>) -> String {
-        if let Some(data) = prev {
-            let avg = data.sum as f64 / data.count as f64;
-            format!("{:.2}", avg)
+    // Part 1 stores data for Part 2
+    fn part1(shared: &mut SharedData) -> String {
+        let sum: i32 = shared.numbers.iter().sum();
+        let count = shared.numbers.len();
+        
+        // Store for Part 2
+        shared.sum = Some(sum);
+        shared.count = Some(count);
+        
+        sum.to_string()
+    }
+    
+    // Part 2 uses Part 1's data if available
+    fn part2(shared: &mut SharedData) -> String {
+        let (sum, count) = if let (Some(s), Some(c)) = (shared.sum, shared.count) {
+            (s, c)  // Use Part 1's data
         } else {
-            // Can still compute independently
-            let sum: i32 = parsed.iter().sum();
-            let avg = sum as f64 / parsed.len() as f64;
-            format!("{:.2}", avg)
-        }
+            // Compute independently if Part 1 wasn't run
+            (shared.numbers.iter().sum(), shared.numbers.len())
+        };
+        
+        let avg = if count > 0 {
+            sum as f64 / count as f64
+        } else {
+            0.0
+        };
+        format!("{:.2}", avg)
     }
 }
 ```
@@ -217,12 +216,11 @@ struct Day1;
 
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    fn part1(parsed: &Vec<i32>) -> String { /* ... */ }
-    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
+    fn part1(shared: &mut Vec<i32>) -> String { /* ... */ }
+    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
 }
 
 // Now it can be discovered automatically
@@ -231,8 +229,6 @@ let registry = RegistryBuilder::new()
     .unwrap()
     .build();
 ```
-
-**Note**: Now that users define the struct separately, you can easily combine `#[derive(AutoRegisterSolver)]` with `#[aoc_solver]`!
 
 ### Compile-Time Validation
 
@@ -243,33 +239,30 @@ The macro provides helpful compile-time errors:
 #[aoc_solver]  // Error: missing required attribute 'max_parts'
 impl Day1 { /* ... */ }
 
-// Missing required types
+// Missing required type
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    // Error: missing required type 'Parsed'
-    // Error: missing required type 'PartialResult'
+    // Error: missing required type 'SharedData'
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
 }
 
 // Missing part1
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
     // Error: at least 'part1' function is required
-    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
+    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
 }
 
 // Part exceeds max_parts
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    fn part1(parsed: &Vec<i32>) -> String { /* ... */ }
-    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
-    fn part3(parsed: &Vec<i32>) -> String { /* ... */ }  // Error: part3 exceeds max_parts = 2
+    fn part1(shared: &mut Vec<i32>) -> String { /* ... */ }
+    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
+    fn part3(shared: &mut Vec<i32>) -> String { /* ... */ }  // Error: part3 exceeds max_parts = 2
 }
 ```
 
@@ -282,43 +275,36 @@ The library supports automatic solver discovery using the `inventory` crate. Thi
 The easiest way to register a solver is using the `#[derive(AutoRegisterSolver)]` macro:
 
 ```rust
-use aoc_solver::{AutoRegisterSolver, Solver, ParseError, PartResult, SolveError};
+use std::borrow::Cow;
+use aoc_solver::{AutoRegisterSolver, Solver, ParseError, SolveError};
 
 #[derive(AutoRegisterSolver)]
 #[aoc(year = 2023, day = 1, tags = ["easy", "2023"])]
 pub struct Day1Solver;
 
 impl Solver for Day1Solver {
-    // ... implementation ...
+    type SharedData = Vec<i32>;
+    
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        input.lines()
+            .map(|line| line.parse().map_err(|_| 
+                ParseError::InvalidFormat("Expected integer".to_string())))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
+    }
+    
+    fn solve_part(
+        shared: &mut Cow<'_, Self::SharedData>,
+        part: usize,
+    ) -> Result<String, SolveError> {
+        match part {
+            1 => Ok(shared.iter().sum::<i32>().to_string()),
+            _ => Err(SolveError::PartNotImplemented(part)),
+        }
+    }
 }
 
 // That's it! No manual registration needed.
-```
-
-The derive macro automatically generates the plugin registration code, eliminating boilerplate.
-
-### Manual Plugin Registration
-
-You can also register plugins manually if needed:
-
-```rust
-use aoc_solver::{Solver, SolverPlugin, ParseError, PartResult, SolveError};
-
-pub struct Day1Solver;
-
-impl Solver for Day1Solver {
-    // ... implementation ...
-}
-
-// Manually register the solver with tags
-inventory::submit! {
-    SolverPlugin {
-        year: 2023,
-        day: 1,
-        solver: &Day1Solver,
-        tags: &["easy", "2023"],
-    }
-}
 ```
 
 ### Using Plugins
@@ -344,107 +330,74 @@ fn main() {
         .register_solver_plugins(|plugin| plugin.year == 2023)
         .unwrap()
         .build();
-    
-    // Or mix manual and plugin registration
-    let registry = RegistryBuilder::new()
-        .register(2022, 1, |input| { /* custom factory */ })
-        .unwrap()
-        .register_all_plugins()
-        .unwrap()
-        .build();
 }
 ```
-
-### Derive Macro vs Manual Registration
-
-**Before (Manual):**
-```rust
-pub struct Day1Solver;
-impl Solver for Day1Solver { /* ... */ }
-
-inventory::submit! {
-    SolverPlugin {
-        year: 2023,
-        day: 1,
-        solver: &Day1Solver,
-        tags: &["easy"],
-    }
-}
-```
-
-**After (Derive Macro):**
-```rust
-#[derive(AutoRegisterSolver)]
-#[aoc(year = 2023, day = 1, tags = ["easy"])]
-pub struct Day1Solver;
-
-impl Solver for Day1Solver { /* ... */ }
-```
-
-The derive macro is cleaner, less error-prone, and keeps metadata close to the struct definition.
-
-### Benefits of the Plugin System
-
-- **No manual registration**: Solvers register themselves automatically
-- **Derive macro**: Eliminates boilerplate with `#[derive(AutoRegisterSolver)]`
-- **Modular**: Define solvers in separate modules or crates
-- **Flexible filtering**: Register subsets based on tags, year, or custom predicates
-- **Environment-specific**: Different solver sets for dev, test, and production
-- **Scalable**: Handles hundreds of solvers without boilerplate
 
 ## Advanced: Dependent Parts
 
-For problems where Part 2 depends on Part 1's computation:
+For problems where Part 2 depends on Part 1's computation, use mutable access to shared data via `Cow::to_mut()`:
 
 ```rust
-use aoc_solver::{Solver, ParseError, PartResult, SolveError};
+use std::borrow::Cow;
+use aoc_solver::{Solver, ParseError, SolveError};
+
+#[derive(Debug, Clone)]
+pub struct SharedData {
+    numbers: Vec<i32>,
+    sum: Option<i32>,
+    count: Option<usize>,
+}
 
 pub struct Day5Solver;
 
-#[derive(Debug, Clone)]
-pub struct Part1Data {
-    pub sum: i32,
-    pub count: usize,
-}
-
 impl Solver for Day5Solver {
-    type Parsed = Vec<i32>;
-    type PartialResult = Part1Data;
+    type SharedData = SharedData;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-        input.lines()
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        let numbers: Vec<i32> = input.lines()
             .map(|line| line.parse().map_err(|_| 
                 ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(Cow::Owned(SharedData {
+            numbers,
+            sum: None,
+            count: None,
+        }))
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
-                let sum: i32 = parsed.iter().sum();
-                let count = parsed.len();
-                Ok(PartResult {
-                    answer: sum.to_string(),
-                    partial: Some(Part1Data { sum, count }),
-                })
+                // Need to mutate, so call to_mut() to get owned data
+                let data = shared.to_mut();
+                let sum: i32 = data.numbers.iter().sum();
+                let count = data.numbers.len();
+                
+                // Store for Part 2
+                data.sum = Some(sum);
+                data.count = Some(count);
+                
+                Ok(sum.to_string())
             }
             2 => {
-                let average = if let Some(data) = previous_partial {
-                    // Use Part 1's data
-                    data.sum as f64 / data.count as f64
+                // Read-only access - no need to call to_mut()
+                let (sum, count) = if let (Some(s), Some(c)) = (shared.sum, shared.count) {
+                    (s, c)  // Use Part 1's data
                 } else {
                     // Compute independently
-                    let sum: i32 = parsed.iter().sum();
-                    sum as f64 / parsed.len() as f64
+                    (shared.numbers.iter().sum(), shared.numbers.len())
                 };
-                Ok(PartResult {
-                    answer: format!("{:.2}", average),
-                    partial: None,
-                })
+                
+                let average = if count > 0 {
+                    sum as f64 / count as f64
+                } else {
+                    0.0
+                };
+                Ok(format!("{:.2}", average))
             }
             _ => Err(SolveError::PartNotImplemented(part)),
         }
@@ -458,20 +411,23 @@ impl Solver for Day5Solver {
 
 The `Solver` trait is the core interface that all problem solvers implement:
 
-- `Parsed`: The intermediate representation of parsed input
-- `PartialResult`: Data that can be shared between parts (use `()` for independent parts)
-- `parse()`: Transforms raw input into the parsed representation
-- `solve_part()`: Solves a specific part, optionally using data from previous parts
+- `SharedData`: The data structure holding parsed input and intermediate results (must implement `ToOwned`)
+- `parse()`: Transforms raw input into `Cow<SharedData>` for zero-copy support
+- `solve_part()`: Solves a specific part with mutable access to `Cow<SharedData>`
 
 ### DynSolver Trait
 
 The `DynSolver` trait provides a type-erased interface for working with any solver:
 
-- `solve(part)`: **Recomputes** the solution and caches it
-- `results()`: Returns **cached** results without recomputation
+- `solve(part)`: Computes the solution for a specific part
 - `year()` and `day()`: Get the solver's year and day
 
-**Important**: Call `solve()` once per part to compute, then use `results()` to access answers without redundant computation.
+### Zero-Copy Design
+
+The library uses `Cow<SharedData>` to enable zero-copy parsing:
+- Read-only operations work directly with borrowed data
+- Call `.to_mut()` only when mutation is needed (triggers clone if borrowed)
+- Each solver controls its own memory strategy
 
 ### RegistryBuilder and SolverRegistry
 
@@ -487,12 +443,6 @@ The builder pattern ensures type-safe registry construction:
 **SolverRegistry** (immutable, for usage):
 - `create_solver()`: Create a solver instance with input
 - Cannot be modified after construction (compile-time guarantee)
-
-**Benefits**:
-- Fluent API with method chaining
-- Duplicate detection during registration
-- Immutability after construction
-- Clear separation between setup and usage phases
 
 ## Examples
 
@@ -527,8 +477,7 @@ The library uses `Result` types for all fallible operations:
   
 - `SolveError`: Part solving failures
   - `PartNotImplemented(usize)`: The requested part is not implemented
-  - `PartOutOfRange(usize)`: The requested part number exceeds max_parts (used by `#[aoc_solver]` macro)
-  - `SolveFailed(Box<dyn Error + Send + Sync>)`: Custom error from solver logic
+  - `SolveFailed(String)`: Custom error from solver logic
   
 - `SolverError`: Registry operations
   - `NotFound(year, day)`: Solver not found for the given year-day
@@ -539,31 +488,6 @@ The library uses `Result` types for all fallible operations:
   - `DuplicateSolver(year, day)`: Attempted to register duplicate solver
 
 All errors implement `std::error::Error` for easy integration.
-
-### Custom Error Example
-
-```rust
-use aoc_solver::{Solver, SolveError, PartResult};
-
-fn solve_part(
-    parsed: &Self::Parsed,
-    part: usize,
-    _previous_partial: Option<&Self::PartialResult>,
-) -> Result<PartResult<Self::PartialResult>, SolveError> {
-    match part {
-        1 => {
-            // Can return custom errors
-            let result = compute_complex_answer(parsed)
-                .map_err(|e| SolveError::SolveFailed(Box::new(e)))?;
-            Ok(PartResult {
-                answer: result.to_string(),
-                partial: None,
-            })
-        }
-        _ => Err(SolveError::PartNotImplemented(part)),
-    }
-}
-```
 
 ## License
 

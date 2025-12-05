@@ -1,59 +1,58 @@
-use aoc_solver::{ParseError, PartResult, Solver};
+use aoc_solver::{ParseError, Solver};
 use aoc_solver_macros::aoc_solver;
 
 #[derive(Debug, Clone)]
-struct SumCount {
-    sum: i32,
-    count: usize,
+struct SharedData {
+    numbers: Vec<i32>,
+    sum: Option<i32>,
+    count: Option<usize>,
 }
 
 struct TestDependentSolver;
 
 #[aoc_solver(max_parts = 2)]
 impl TestDependentSolver {
-    type Parsed = Vec<i32>;
-    type PartialResult = SumCount;
-    
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
-        input
+    type SharedData = SharedData;
+
+    fn parse(input: &str) -> Result<SharedData, ParseError> {
+        let numbers: Vec<i32> = input
             .lines()
             .map(|line| {
                 line.trim()
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat("Expected integer".into()))
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(SharedData {
+            numbers,
+            sum: None,
+            count: None,
+        })
     }
-    
-    fn part1(parsed: &Vec<i32>) -> PartResult<SumCount> {
-        let sum: i32 = parsed.iter().sum();
-        let count = parsed.len();
-        PartResult {
-            answer: sum.to_string(),
-            partial: Some(SumCount { sum, count }),
-        }
+
+    fn part1(shared: &mut SharedData) -> String {
+        let sum: i32 = shared.numbers.iter().sum();
+        let count = shared.numbers.len();
+
+        // Store for part2
+        shared.sum = Some(sum);
+        shared.count = Some(count);
+
+        sum.to_string()
     }
-    
-    fn part2(parsed: &Vec<i32>, prev: Option<&SumCount>) -> String {
-        if let Some(data) = prev {
-            // Use data from part1
-            let avg = if data.count > 0 {
-                data.sum as f64 / data.count as f64
-            } else {
-                0.0
-            };
-            format!("{:.2}", avg)
+
+    fn part2(shared: &mut SharedData) -> String {
+        // Use data from part1 if available, otherwise compute
+        let sum = shared.sum.unwrap_or_else(|| shared.numbers.iter().sum());
+        let count = shared.count.unwrap_or_else(|| shared.numbers.len());
+
+        let avg = if count > 0 {
+            sum as f64 / count as f64
         } else {
-            // Compute independently
-            let sum: i32 = parsed.iter().sum();
-            let count = parsed.len();
-            let avg = if count > 0 {
-                sum as f64 / count as f64
-            } else {
-                0.0
-            };
-            format!("{:.2}", avg)
-        }
+            0.0
+        };
+        format!("{:.2}", avg)
     }
 }
 
@@ -61,48 +60,47 @@ impl TestDependentSolver {
 fn test_dependent_parts_compiles() {
     // Test that the macro generates valid code
     let input = "10\n20\n30";
-    let parsed = TestDependentSolver::parse(input).unwrap();
-    assert_eq!(parsed, vec![10, 20, 30]);
+    let cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+    let shared = cow.into_owned();
+    assert_eq!(shared.numbers, vec![10, 20, 30]);
 }
 
 #[test]
-fn test_part1_produces_partial_result() {
+fn test_part1_stores_data() {
     let input = "10\n20\n30";
-    let parsed = TestDependentSolver::parse(input).unwrap();
-    
-    let result = TestDependentSolver::solve_part(&parsed, 1, None).unwrap();
-    assert_eq!(result.answer, "60");
-    assert!(result.partial.is_some());
-    
-    let partial = result.partial.unwrap();
-    assert_eq!(partial.sum, 60);
-    assert_eq!(partial.count, 3);
+    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+
+    let result = TestDependentSolver::solve_part(&mut cow, 1).unwrap();
+    assert_eq!(result, "60");
+
+    // Check that data was stored
+    assert_eq!(cow.sum, Some(60));
+    assert_eq!(cow.count, Some(3));
 }
 
 #[test]
 fn test_part2_uses_part1_data() {
     let input = "10\n20\n30";
-    let parsed = TestDependentSolver::parse(input).unwrap();
-    
-    // First solve Part 1 to get the partial data
-    let part1_result = TestDependentSolver::solve_part(&parsed, 1, None).unwrap();
-    let part1_data = part1_result.partial.as_ref();
-    
-    // Now solve Part 2 with Part 1's data
-    let part2_result = TestDependentSolver::solve_part(&parsed, 2, part1_data).unwrap();
-    
+    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+
+    // First solve Part 1 to populate shared data
+    let _part1_result = TestDependentSolver::solve_part(&mut cow, 1).unwrap();
+
+    // Now solve Part 2 which uses Part 1's data
+    let part2_result = TestDependentSolver::solve_part(&mut cow, 2).unwrap();
+
     // Average of 10, 20, 30 is 20.00
-    assert_eq!(part2_result.answer, "20.00");
+    assert_eq!(part2_result, "20.00");
 }
 
 #[test]
 fn test_part2_solves_independently() {
     let input = "10\n20\n30";
-    let parsed = TestDependentSolver::parse(input).unwrap();
-    
-    // Solve Part 2 without Part 1's data
-    let result = TestDependentSolver::solve_part(&parsed, 2, None).unwrap();
-    
+    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+
+    // Solve Part 2 without Part 1 (shared.sum and shared.count are None)
+    let result = TestDependentSolver::solve_part(&mut cow, 2).unwrap();
+
     // Should still compute the correct average
-    assert_eq!(result.answer, "20.00");
+    assert_eq!(result, "20.00");
 }

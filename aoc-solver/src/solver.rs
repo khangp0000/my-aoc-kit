@@ -1,92 +1,85 @@
 //! Core solver trait and related types
 
 use crate::error::{ParseError, SolveError};
-
-/// Result of solving a part, containing the answer and optional partial data
-#[derive(Debug, Clone)]
-pub struct PartResult<T> {
-    /// The displayable answer for this part
-    pub answer: String,
-    /// Optional intermediate data to pass to subsequent parts
-    pub partial: Option<T>,
-}
+use std::borrow::Cow;
 
 /// Core trait that all Advent of Code solvers must implement
 ///
 /// Each solver handles a specific year-day problem and defines:
-/// - How to parse the input string into an intermediate representation
-/// - How to solve each part of the problem
-/// - What data (if any) to share between parts
+/// - How to parse the input string into shared data
+/// - How to solve each part of the problem using mutable access to shared data
 ///
 /// # Example
 ///
 /// ```
-/// use aoc_solver::{Solver, ParseError, PartResult, SolveError};
+/// use aoc_solver::{ParseError, SolveError, Solver};
+/// use std::borrow::Cow;
 ///
 /// struct Day1Solver;
 ///
-/// impl Solver for Day1Solver {
-///     type Parsed = Vec<i32>;
-///     type PartialResult = ();  // No data shared between parts
+/// #[derive(Debug, Clone)]
+/// struct SharedData {
+///     numbers: Vec<i32>,
+/// }
 ///
-///     fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-///         input.lines()
-///             .map(|line| line.parse().map_err(|_| 
+/// impl Solver for Day1Solver {
+///     type SharedData = SharedData;
+///
+///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+///         let numbers = input.lines()
+///             .map(|line| line.parse().map_err(|_|
 ///                 ParseError::InvalidFormat("Expected integer".to_string())))
-///             .collect()
+///             .collect::<Result<Vec<_>, _>>()?;
+///         Ok(Cow::Owned(SharedData { numbers }))
 ///     }
 ///
 ///     fn solve_part(
-///         parsed: &Self::Parsed,
+///         shared: &mut Cow<'_, Self::SharedData>,
 ///         part: usize,
-///         _previous_partial: Option<&Self::PartialResult>,
-///     ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+///     ) -> Result<String, SolveError> {
 ///         match part {
-///             1 => Ok(PartResult {
-///                 answer: parsed.iter().sum::<i32>().to_string(),
-///                 partial: None,
-///             }),
-///             2 => Ok(PartResult {
-///                 answer: parsed.iter().product::<i32>().to_string(),
-///                 partial: None,
-///             }),
+///             1 => {
+///                 // Part 1: Sum all numbers (read-only, zero-copy)
+///                 let sum: i32 = shared.numbers.iter().sum();
+///                 Ok(sum.to_string())
+///             }
+///             2 => {
+///                 // Part 2: Product of all numbers (read-only, zero-copy)
+///                 let product: i32 = shared.numbers.iter().product();
+///                 Ok(product.to_string())
+///             }
 ///             _ => Err(SolveError::PartNotImplemented(part)),
 ///         }
 ///     }
 /// }
 /// ```
 pub trait Solver {
-    /// The intermediate parsed representation of the input
-    type Parsed;
-    
-    /// The type of data that can be shared between parts
-    /// Use `()` if parts are independent
-    type PartialResult;
-    
-    /// Parse the input string into the intermediate representation
+    /// The shared data structure that holds parsed input and intermediate results
+    type SharedData: ToOwned;
+
+    /// Parse the input string into the shared data structure
     ///
     /// # Arguments
     /// * `input` - The raw input string for this problem
     ///
     /// # Returns
-    /// * `Ok(Parsed)` - Successfully parsed data
+    /// * `Ok(SharedData)` - Successfully parsed data
     /// * `Err(ParseError)` - Parsing failed with details
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError>;
-    
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError>;
+
     /// Solve a specific part of the problem
     ///
     /// # Arguments
-    /// * `parsed` - The parsed input data
+    /// * `shared` - Mutable reference to Cow containing shared data (parsed input and intermediate results).
+    ///   Solvers can work with borrowed data or call `.to_mut()` to get owned data when mutation is needed
     /// * `part` - The part number (1, 2, etc.)
-    /// * `previous_partial` - Data from the previous part, if available
     ///
     /// # Returns
-    /// * `Ok(PartResult)` - The part was solved successfully
+    /// * `Ok(String)` - The answer for this part
     /// * `Err(SolveError::PartNotImplemented)` - The part is not implemented
     /// * `Err(SolveError::SolveFailed)` - An error occurred while solving
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError>;
+    ) -> Result<String, SolveError>;
 }

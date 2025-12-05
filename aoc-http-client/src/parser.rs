@@ -1,6 +1,6 @@
 //! HTML response parsing utilities
 
-use crate::{error::AocError, SubmissionResult};
+use crate::{SubmissionResult, error::AocError};
 use regex::Regex;
 use scraper::{Html, Selector};
 use std::cell::OnceCell;
@@ -26,23 +26,20 @@ impl ResponseParser {
 
     /// Get or compile the user ID regex
     fn user_id_regex(&self) -> &Regex {
-        self.user_id_regex.get_or_init(|| {
-            Regex::new(r"\(anonymous user #(\d+)\)").unwrap()
-        })
+        self.user_id_regex
+            .get_or_init(|| Regex::new(r"\(anonymous user #(\d+)\)").unwrap())
     }
 
     /// Get or compile the throttle duration regex
     fn throttle_regex(&self) -> &Regex {
-        self.throttle_regex.get_or_init(|| {
-            Regex::new(r"You have (.+?) left to wait\.").unwrap()
-        })
+        self.throttle_regex
+            .get_or_init(|| Regex::new(r"You have (.+?) left to wait\.").unwrap())
     }
 
     /// Get or compile the main element selector
     fn main_selector(&self) -> &Selector {
-        self.main_selector.get_or_init(|| {
-            Selector::parse("main").unwrap()
-        })
+        self.main_selector
+            .get_or_init(|| Selector::parse("main").unwrap())
     }
 
     /// Extract user ID from settings page HTML
@@ -58,7 +55,10 @@ impl ResponseParser {
         let document = Html::parse_document(html);
         let selector = self.main_selector();
 
-        let main_element = document.select(selector).next().ok_or(AocError::HtmlParse)?;
+        let main_element = document
+            .select(selector)
+            .next()
+            .ok_or(AocError::HtmlParse)?;
 
         Ok(main_element.text().collect::<String>())
     }
@@ -106,8 +106,6 @@ impl Default for ResponseParser {
 mod tests {
     use super::*;
     use proptest::prelude::*;
-
-
 
     #[test]
     fn test_malformed_html() {
@@ -157,7 +155,7 @@ mod tests {
     // **Validates: Requirements 9.1**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_html_main_element_extraction(
             // Generate text content without HTML special characters to avoid parsing issues
@@ -179,16 +177,16 @@ mod tests {
                     text_content
                 )
             };
-            
+
             // Extract main text
             let parser = ResponseParser::new();
             let result = parser.extract_main_text(&html);
-            
+
             // Property: extraction should succeed for valid HTML with main element
             prop_assert!(result.is_ok(), "extract_main_text should succeed for HTML with main element");
-            
+
             let extracted = result.unwrap();
-            
+
             // Property: extracted text should contain the original text content
             prop_assert!(
                 extracted.contains(text_content.trim()),
@@ -196,14 +194,14 @@ mod tests {
                 text_content.trim(),
                 extracted
             );
-            
+
             // Property: extracted text should not contain HTML tags
             prop_assert!(
                 !extracted.contains('<') && !extracted.contains('>'),
                 "Extracted text should not contain HTML tags. Got: '{}'",
                 extracted
             );
-            
+
             // Property: if nested tags were present, their text should also be extracted
             if has_nested_tags {
                 prop_assert!(
@@ -218,7 +216,7 @@ mod tests {
     // Additional property test: HTML without main element should fail
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_html_without_main_element_fails(
             text_content in "[a-zA-Z0-9 .,!?\\n]{1,200}",
@@ -228,17 +226,17 @@ mod tests {
                 r#"<html><body><div>{}</div></body></html>"#,
                 text_content
             );
-            
+
             // Extract main text
             let parser = ResponseParser::new();
             let result = parser.extract_main_text(&html);
-            
+
             // Property: extraction should fail when main element is missing
             prop_assert!(
                 result.is_err(),
                 "extract_main_text should fail for HTML without main element"
             );
-            
+
             // Property: error should be HtmlParse
             prop_assert!(
                 matches!(result.unwrap_err(), AocError::HtmlParse),
@@ -251,7 +249,7 @@ mod tests {
     // **Validates: Requirements 5.1**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_incorrect_answer_detection(
             // Generate text before and after the pattern
@@ -271,17 +269,17 @@ mod tests {
                 r#"<html><body><main>{}</main></body></html>"#,
                 text_content
             );
-            
+
             // Parse submission response
             let parser = ResponseParser::new();
             let result = parser.parse_submission_response(&html);
-            
+
             // Property: any HTML containing "not the right answer" should be detected as Incorrect
             prop_assert!(
                 result.is_ok(),
                 "parse_submission_response should succeed for valid HTML"
             );
-            
+
             prop_assert_eq!(
                 result.unwrap(),
                 SubmissionResult::Incorrect,
@@ -294,7 +292,7 @@ mod tests {
     // **Validates: Requirements 5.2**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_already_completed_detection(
             // Generate text before and after the pattern
@@ -314,17 +312,17 @@ mod tests {
                 r#"<html><body><main>{}</main></body></html>"#,
                 text_content
             );
-            
+
             // Parse submission response
             let parser = ResponseParser::new();
             let result = parser.parse_submission_response(&html);
-            
+
             // Property: any HTML containing "already complete it" should be detected as AlreadyCompleted
             prop_assert!(
                 result.is_ok(),
                 "parse_submission_response should succeed for valid HTML"
             );
-            
+
             prop_assert_eq!(
                 result.unwrap(),
                 SubmissionResult::AlreadyCompleted,
@@ -337,7 +335,7 @@ mod tests {
     // **Validates: Requirements 5.3**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_throttling_detection(
             // Generate text before and after the pattern
@@ -357,17 +355,17 @@ mod tests {
                 r#"<html><body><main>{}</main></body></html>"#,
                 text_content
             );
-            
+
             // Parse submission response
             let parser = ResponseParser::new();
             let result = parser.parse_submission_response(&html);
-            
+
             // Property: any HTML containing "gave an answer too recently" should be detected as Throttled
             prop_assert!(
                 result.is_ok(),
                 "parse_submission_response should succeed for valid HTML"
             );
-            
+
             match result.unwrap() {
                 SubmissionResult::Throttled { .. } => {
                     // Success - throttling was detected
@@ -387,7 +385,7 @@ mod tests {
     // **Validates: Requirements 5.4, 9.6, 9.7**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_throttle_duration_extraction(
             // Generate random duration components
@@ -399,7 +397,7 @@ mod tests {
         ) {
             // Skip cases where both are zero (not a valid duration)
             prop_assume!(minutes > 0 || seconds > 0);
-            
+
             // Build duration string in humantime format
             let duration_str = if minutes > 0 && seconds > 0 {
                 format!("{}m {}s", minutes, seconds)
@@ -408,7 +406,7 @@ mod tests {
             } else {
                 format!("{}s", seconds)
             };
-            
+
             // Build HTML with throttling pattern and duration
             let text_content = format!(
                 "{} You gave an answer too recently. You have {} left to wait. {}",
@@ -418,17 +416,17 @@ mod tests {
                 r#"<html><body><main>{}</main></body></html>"#,
                 text_content
             );
-            
+
             // Parse submission response
             let parser = ResponseParser::new();
             let result = parser.parse_submission_response(&html);
-            
+
             // Property: parsing should succeed
             prop_assert!(
                 result.is_ok(),
                 "parse_submission_response should succeed for valid HTML with duration"
             );
-            
+
             // Property: result should be Throttled with a duration
             match result.unwrap() {
                 SubmissionResult::Throttled { wait_time } => {
@@ -437,7 +435,7 @@ mod tests {
                         "Throttled result should contain a parsed duration for valid duration string '{}'",
                         duration_str
                     );
-                    
+
                     // Property: parsed duration should match expected value
                     let expected_secs = minutes * 60 + seconds;
                     let actual_secs = wait_time.unwrap().as_secs();
@@ -463,7 +461,7 @@ mod tests {
     // **Validates: Requirements 1.4**
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_user_id_extraction(
             // Generate random user IDs
@@ -477,18 +475,18 @@ mod tests {
                 r#"<html><body>{} (anonymous user #{}) {}</body></html>"#,
                 prefix, user_id, suffix
             );
-            
+
             // Extract user ID
             let parser = ResponseParser::new();
             let result = parser.extract_user_id(&html);
-            
+
             // Property: extraction should succeed for HTML containing the pattern
             prop_assert!(
                 result.is_some(),
                 "extract_user_id should return Some for HTML containing '(anonymous user #{})'",
                 user_id
             );
-            
+
             // Property: extracted user ID should match the original
             prop_assert_eq!(
                 result.unwrap(),
@@ -501,7 +499,7 @@ mod tests {
     // Additional test: HTML without user ID pattern should return None
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(10))]
-        
+
         #[test]
         fn prop_user_id_extraction_missing_pattern(
             text_content in "[a-zA-Z0-9 .,!?\\n]{1,200}",
@@ -511,11 +509,11 @@ mod tests {
                 r#"<html><body>{}</body></html>"#,
                 text_content
             );
-            
+
             // Extract user ID
             let parser = ResponseParser::new();
             let result = parser.extract_user_id(&html);
-            
+
             // Property: extraction should return None when pattern is missing
             prop_assert!(
                 result.is_none(),

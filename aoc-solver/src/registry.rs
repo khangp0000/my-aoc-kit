@@ -1,12 +1,12 @@
 //! Solver registry for managing and creating solver instances
 
+use crate::error::{ParseError, RegistrationError, SolverError};
+use crate::instance::{DynSolver, SolverInstanceCow};
 use std::collections::HashMap;
 
-use crate::error::{ParseError, RegistrationError, SolverError};
-use crate::instance::DynSolver;
-
 /// Factory function type for creating solver instances
-pub type SolverFactory = Box<dyn Fn(&str) -> Result<Box<dyn DynSolver>, ParseError>>;
+pub type SolverFactory =
+    Box<dyn for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>>;
 
 /// Builder for constructing a SolverRegistry with fluent API
 ///
@@ -36,7 +36,7 @@ impl RegistryBuilder {
             solvers: HashMap::new(),
         }
     }
-    
+
     /// Register a solver factory function for a specific year and day
     ///
     /// Returns an error if a solver is already registered for the given year-day combination.
@@ -51,7 +51,7 @@ impl RegistryBuilder {
     /// * `Err(RegistrationError)` - Duplicate solver for this year-day combination
     pub fn register<F>(mut self, year: u32, day: u32, factory: F) -> Result<Self, RegistrationError>
     where
-        F: Fn(&str) -> Result<Box<dyn DynSolver>, ParseError> + 'static,
+        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError> + 'static,
     {
         if self.solvers.contains_key(&(year, day)) {
             return Err(RegistrationError::DuplicateSolver(year, day));
@@ -59,7 +59,7 @@ impl RegistryBuilder {
         self.solvers.insert((year, day), Box::new(factory));
         Ok(self)
     }
-    
+
     /// Register all collected solver plugins
     ///
     /// Iterates through all plugins submitted via `inventory::submit!` and
@@ -84,7 +84,7 @@ impl RegistryBuilder {
         }
         Ok(self)
     }
-    
+
     /// Register solver plugins that match the given filter predicate
     ///
     /// Only registers plugins for which the filter function returns `true`.
@@ -127,7 +127,7 @@ impl RegistryBuilder {
         }
         Ok(self)
     }
-    
+
     /// Finalize the builder and create an immutable registry
     ///
     /// Consumes the builder and returns a `SolverRegistry` that can only
@@ -173,17 +173,17 @@ impl SolverRegistry {
     /// # Returns
     /// * `Ok(Box<dyn DynSolver>)` - Successfully created solver
     /// * `Err(SolverError)` - Solver not found or parsing failed
-    pub fn create_solver(
+    pub fn create_solver<'a>(
         &self,
         year: u32,
         day: u32,
-        input: &str,
-    ) -> Result<Box<dyn DynSolver>, SolverError> {
+        input: &'a str,
+    ) -> Result<Box<dyn DynSolver + 'a>, SolverError> {
         let factory = self
             .solvers
             .get(&(year, day))
             .ok_or(SolverError::NotFound(year, day))?;
-        
+
         factory(input).map_err(SolverError::ParseError)
     }
 }
@@ -204,14 +204,23 @@ impl SolverRegistry {
 /// # Example
 ///
 /// ```no_run
-/// # use aoc_solver::{Solver, RegisterableSolver, RegistryBuilder, ParseError, PartResult, SolveError};
-/// # struct MyDay1;
-/// # impl Solver for MyDay1 {
-/// #     type Parsed = ();
-/// #     type PartialResult = ();
-/// #     fn parse(_: &str) -> Result<Self::Parsed, ParseError> { Ok(()) }
-/// #     fn solve_part(_: &Self::Parsed, _: usize, _: Option<&Self::PartialResult>) -> Result<PartResult<Self::PartialResult>, SolveError> { Err(SolveError::PartNotImplemented(0)) }
-/// # }
+/// use aoc_solver::{ParseError, RegisterableSolver, RegistryBuilder, SolveError, Solver};
+/// use std::borrow::Cow;
+///
+/// struct MyDay1;
+///
+/// impl Solver for MyDay1 {
+///     type SharedData = ();
+///     
+///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+///         Ok(Cow::Owned(()))
+///     }
+///     
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///         Err(SolveError::PartNotImplemented(0))
+///     }
+/// }
+///
 /// let solver = MyDay1;
 /// let builder = RegistryBuilder::new();
 /// let builder = solver.register_with(builder, 2023, 1).unwrap();
@@ -243,8 +252,6 @@ pub trait RegisterableSolver: Sync {
 impl<S> RegisterableSolver for S
 where
     S: crate::solver::Solver + Sync + 'static,
-    S::Parsed: 'static,
-    S::PartialResult: 'static,
 {
     fn register_with(
         &self,
@@ -253,10 +260,8 @@ where
         day: u32,
     ) -> Result<RegistryBuilder, RegistrationError> {
         builder.register(year, day, move |input: &str| {
-            let parsed = S::parse(input)?;
-            Ok(Box::new(crate::instance::SolverInstance::<S>::new(
-                year, day, parsed,
-            )))
+            let shared = S::parse(input)?;
+            Ok(Box::new(SolverInstanceCow::<S>::new(year, day, shared)))
         })
     }
 }
@@ -269,14 +274,23 @@ where
 /// # Example
 ///
 /// ```no_run
-/// # use aoc_solver::{SolverPlugin, Solver, ParseError, PartResult, SolveError};
-/// # struct Day1Solver;
-/// # impl Solver for Day1Solver {
-/// #     type Parsed = ();
-/// #     type PartialResult = ();
-/// #     fn parse(_: &str) -> Result<Self::Parsed, ParseError> { Ok(()) }
-/// #     fn solve_part(_: &Self::Parsed, _: usize, _: Option<&Self::PartialResult>) -> Result<PartResult<Self::PartialResult>, SolveError> { Err(SolveError::PartNotImplemented(0)) }
-/// # }
+/// use aoc_solver::{ParseError, SolveError, Solver, SolverPlugin};
+/// use std::borrow::Cow;
+///
+/// struct Day1Solver;
+///
+/// impl Solver for Day1Solver {
+///     type SharedData = ();
+///     
+///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+///         Ok(Cow::Owned(()))
+///     }
+///     
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///         Err(SolveError::PartNotImplemented(0))
+///     }
+/// }
+///
 /// inventory::submit! {
 ///     SolverPlugin {
 ///         year: 2023,
@@ -311,16 +325,23 @@ inventory::collect!(SolverPlugin);
 /// # Example
 ///
 /// ```
-/// use aoc_solver::{SolverRegistry, RegistryBuilder, register_solver, Solver, ParseError, PartResult, SolveError};
-/// 
+/// use aoc_solver::{register_solver, ParseError, RegistryBuilder, SolveError, Solver, SolverRegistry};
+/// use std::borrow::Cow;
+///
 /// struct MyDay1Solver;
+///
 /// impl Solver for MyDay1Solver {
-///     type Parsed = ();
-///     type PartialResult = ();
-///     fn parse(_: &str) -> Result<Self::Parsed, ParseError> { Ok(()) }
-///     fn solve_part(_: &Self::Parsed, _: usize, _: Option<&Self::PartialResult>) -> Result<PartResult<Self::PartialResult>, SolveError> { Err(SolveError::PartNotImplemented(0)) }
+///     type SharedData = ();
+///     
+///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+///         Ok(Cow::Owned(()))
+///     }
+///     
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///         Err(SolveError::PartNotImplemented(0))
+///     }
 /// }
-/// 
+///
 /// // Old style (still works for backward compatibility)
 /// let mut builder = RegistryBuilder::new();
 /// register_solver!(builder, MyDay1Solver, 2023, 1);
@@ -329,11 +350,13 @@ inventory::collect!(SolverPlugin);
 #[macro_export]
 macro_rules! register_solver {
     ($builder:expr, $solver:ty, $year:expr, $day:expr) => {
-        $builder = $builder.register($year, $day, |input: &str| {
-            let parsed = <$solver>::parse(input)?;
-            Ok(Box::new($crate::SolverInstance::<$solver>::new(
-                $year, $day, parsed,
-            )))
-        }).expect("Failed to register solver");
+        $builder = $builder
+            .register($year, $day, |input: &str| {
+                let shared = <$solver>::parse(input)?;
+                Ok(Box::new($crate::SolverInstanceCow::<$solver>::new(
+                    $year, $day, shared,
+                )))
+            })
+            .expect("Failed to register solver");
     };
 }

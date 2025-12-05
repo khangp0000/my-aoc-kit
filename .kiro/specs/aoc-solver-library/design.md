@@ -32,9 +32,9 @@ The system follows a trait-based plugin architecture where each year-day combina
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     Solver Trait                             │
-│  - Associated Type: Parsed (intermediate type)               │
-│  - parse(input: &str) → Result<Parsed>                       │
-│  - solve_part(parsed: &Parsed, part: usize) → Option<String>│
+│  - Associated Type: SharedData                               │
+│  - parse(input: &str) → Result<SharedData>                   │
+│  - solve_part(shared: &mut SharedData, part: usize) → String│
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
@@ -49,59 +49,72 @@ The system follows a trait-based plugin architecture where each year-day combina
 ### Core Trait: Solver
 
 ```rust
-pub trait Solver {
-    type Parsed;
-    type PartialResult;  // Intermediate data that can be shared between parts
+pub trait Solver
+where 
+    Self::SharedData: ToOwned,
+    <Self::SharedData as ToOwned>::Owned: BorrowMut<Self::SharedData>
+{
+    type SharedData;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError>;
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError>;
     fn solve_part(
-        parsed: &Self::Parsed, 
-        part: usize, 
-        previous_partial: Option<&Self::PartialResult>
-    ) -> Result<PartResult<Self::PartialResult>, SolveError>;
-}
-
-pub struct PartResult<T> {
-    pub answer: String,           // The displayable answer
-    pub partial: Option<T>,       // Optional intermediate data for next parts
+        shared: &mut Cow<'_, Self::SharedData>,
+        part: usize,
+    ) -> Result<String, SolveError>;
 }
 ```
 
 The `Solver` trait defines the contract that all problem solvers must implement:
-- `Parsed`: Associated type representing the intermediate parsed data from input
-- `PartialResult`: Associated type for structured data that can be passed between parts (each solver defines its own type)
-- `parse`: Transforms raw input into the intermediate type
-- `solve_part`: Computes the solution for a specific part number, with optional access to the previous part's structured result
+- `SharedData`: Associated type representing both the parsed input and any intermediate data shared between parts. Must implement `ToOwned` with a `Clone`-able owned type to support zero-copy parsing.
+- `parse`: Transforms raw input into a `Cow<SharedData>`, allowing either borrowed (zero-copy) or owned data
+- `solve_part`: Computes the solution for a specific part number with mutable access to `Cow<SharedData>`, enabling lazy cloning
+
+**Zero-Copy Design Benefits:**
+- **Read-only operations**: Solvers can work directly with borrowed data without any allocations
+- **Lazy cloning**: Solvers call `.to_mut()` only when mutation is needed, triggering a clone at that point
+- **Solver control**: Each solver decides its own memory strategy based on whether it needs to mutate data
 
 This design allows:
-- Part 1 to produce both an answer string and optional structured data
-- Part 2 to receive Part 1's structured data (if provided) with full type safety
-- Each solver to define its own `PartialResult` type based on what data needs to be shared
-- Independent parts by using `()` as the `PartialResult` type or returning `None` for partial data
+- Parts to directly mutate shared state to store intermediate results (via `.to_mut()`)
+- Each solver to define its own `SharedData` type with exactly the fields it needs
+- Independent parts by using simple types (e.g., `Vec<i32>`) without additional fields
+- Dependent parts by adding `Option<T>` fields that parts can fill in for later parts to read
+- Better scalability for problems with 3+ parts (just add more Option fields as needed)
+- Zero-copy parsing for read-only operations, improving performance
 
-### SolverInstance
+### SolverInstance and SolverInstanceCow
 
 ```rust
-pub struct SolverInstance<S: Solver> {
+pub struct SolverInstanceCow<'a, S: Solver> {
     year: u32,
     day: u32,
-    parsed: S::Parsed,
-    results: Vec<Option<String>>,
-    partial_results: Vec<Option<S::PartialResult>>,
+    shared: Cow<'a, S::SharedData>,
 }
+
+// Type alias for owned instances (lifetime 'static)
+pub type SolverInstance<S: Solver> = SolverInstanceCow<'static, S>;
 ```
 
-`SolverInstance` wraps a parsed input and manages the state for a specific problem instance:
+The implementation uses a single struct with a lifetime parameter and a type alias:
+
+**SolverInstanceCow<'a, S>**: Generic instance that can hold borrowed or owned data via `Cow<'a, SharedData>`
+**SolverInstance<S>**: Type alias for `SolverInstanceCow<'static, S>`, representing instances with owned data
+
+This design is more elegant than having two separate structs, as it:
+- Reduces code duplication
+- Uses Rust's lifetime system to enforce ownership semantics
+- Provides the same functionality with less code
+
+Both implement the `DynSolver` trait for uniform access:
 - Stores the year and day for identification
-- Holds the parsed intermediate data
-- Maintains a vector of part answer strings
-- Maintains a vector of partial results (structured data) that can be passed between parts
-- Provides methods to solve parts and retrieve results
+- Holds the shared data (parsed input and intermediate results)
+- Provides methods to solve parts
 
 When solving a part, the instance:
-1. Passes the previous part's `PartialResult` (if it exists) to the solve function
-2. Stores both the answer string and the new partial result
-3. Makes the partial result available to subsequent parts
+1. Wraps shared data in a `Cow` (borrowing for `SolverInstance`, direct for `SolverInstanceCow`)
+2. Passes `&mut Cow<SharedData>` to the solve function
+3. The solve function can read borrowed data or call `.to_mut()` to get owned data for mutation
+4. Returns the answer string directly
 
 ### SolverRegistry and Builder Pattern
 
@@ -185,26 +198,20 @@ let solver = registry.create_solver(2023, 1, "input")?;
 
 ```rust
 pub trait DynSolver {
-    /// Solves the specified part, recomputing the result each time.
-    /// The result is cached in the results vector and returned.
-    /// Use `results()` to access cached results without recomputation.
+    /// Solves the specified part.
     fn solve(&mut self, part: usize) -> Result<String, SolveError>;
-    
-    /// Returns a reference to all cached results without recomputation.
-    /// Index corresponds to part number (0-indexed: results[0] is Part 1).
-    fn results(&self) -> &[Option<String>];
     
     fn year(&self) -> u32;
     fn day(&self) -> u32;
 }
 ```
 
-The `DynSolver` trait provides a type-erased interface for working with any solver through dynamic dispatch. The concrete `SolverInstance<S>` implements this trait, allowing the registry to work with different solver types uniformly while each instance maintains full type safety internally for its `Parsed` and `PartialResult` types.
+The `DynSolver` trait provides a type-erased interface for working with any solver through dynamic dispatch. The concrete `SolverInstance<S>` implements this trait, allowing the registry to work with different solver types uniformly while each instance maintains full type safety internally for its `SharedData` type.
 
-**Important behavior:**
-- `solve(part)`: **Recomputes** the solution each time it's called, updates the cache, and returns the result
-- `results()`: Returns the **cached** results without any recomputation
-- To avoid redundant computation, call `solve()` once per part and use `results()` to access answers afterward
+**Behavior:**
+- `solve(part)`: Computes the solution for the specified part and returns the answer
+- No result caching - each call recomputes (solvers can cache in `SharedData` if needed)
+- Simple and straightforward API
 
 ### RegisterableSolver Trait
 
@@ -230,8 +237,7 @@ The `RegisterableSolver` trait provides a type-erased interface for solvers to s
 ```rust
 impl<S: Solver + 'static> RegisterableSolver for S 
 where
-    S::Parsed: 'static,
-    S::PartialResult: 'static,
+    S::SharedData: 'static,
 {
     fn register_with(
         &self, 
@@ -240,8 +246,8 @@ where
         day: u32
     ) -> Result<RegistryBuilder, RegistrationError> {
         builder.register(year, day, |input: &str| {
-            let parsed = S::parse(input)?;
-            Ok(Box::new(SolverInstance::<S>::new(year, day, parsed)))
+            let shared = S::parse(input)?;
+            Ok(Box::new(SolverInstance::<S>::new(year, day, shared)))
         })
     }
 }
@@ -350,34 +356,7 @@ let registry = RegistryBuilder::new()
 ```rust
 impl<S: Solver> DynSolver for SolverInstance<S> {
     fn solve(&mut self, part: usize) -> Result<String, SolveError> {
-        // Get the previous part's partial result (if solving part 2, get part 1's data)
-        let previous_partial = if part > 1 {
-            self.partial_results.get(part - 2).and_then(|opt| opt.as_ref())
-        } else {
-            None
-        };
-        
-        // Call the solver's solve_part method
-        let result = S::solve_part(&self.parsed, part, previous_partial)?;
-        
-        // Store the answer string
-        let index = part - 1; // Convert to 0-indexed
-        if index >= self.results.len() {
-            self.results.resize_with(index + 1, || None);
-        }
-        if index >= self.partial_results.len() {
-            self.partial_results.resize_with(index + 1, || None);
-        }
-        self.results[index] = Some(result.answer.clone());
-        
-        // Store the partial result for the next part
-        self.partial_results[index] = result.partial;
-        
-        Ok(result.answer)
-    }
-    
-    fn results(&self) -> &[Option<String>] {
-        &self.results
+        S::solve_part(&mut self.shared, part)
     }
     
     fn year(&self) -> u32 {
@@ -390,24 +369,21 @@ impl<S: Solver> DynSolver for SolverInstance<S> {
 }
 
 impl<S: Solver> SolverInstance<S> {
-    pub fn new(year: u32, day: u32, parsed: S::Parsed) -> Self {
+    pub fn new(year: u32, day: u32, shared: S::SharedData) -> Self {
         Self {
             year,
             day,
-            parsed,
-            results: Vec::new(),
-            partial_results: Vec::new(),
+            shared,
         }
     }
 }
 ```
 
 **Key implementation details:**
-- When `solve(part)` is called, it retrieves the previous part's `PartialResult` from storage
-- The solver's `solve_part` method is called with the parsed data and previous partial result
-- Both the answer string and the new partial result are stored
-- The partial result is made available to subsequent parts automatically
-- Type safety is maintained: `S::PartialResult` is known at compile time for each `SolverInstance<S>`
+- When `solve(part)` is called, it passes mutable access to the shared data
+- The solver's `solve_part` method can read and modify the shared data as needed
+- No result caching - each call recomputes (simpler and more predictable)
+- Type safety is maintained: `S::SharedData` is known at compile time for each `SolverInstance<S>`
 - The trait object boundary (`Box<dyn DynSolver>`) only exists at the registry level
 
 ### Error Types
@@ -453,107 +429,97 @@ A simple tuple representing a unique problem identifier.
 
 ### Part Result
 
-Part results are stored in two parallel vectors:
-
-**Answer Strings**: `Vec<Option<String>>`
-- Index corresponds to part number (0-indexed or 1-indexed based on design choice)
-- `Some(String)` indicates a solved part with its displayable answer
-- `None` indicates an unsolved or unimplemented part
-
-**Partial Results**: `Vec<Option<S::PartialResult>>`
-- Index corresponds to part number
-- `Some(data)` indicates structured data produced by that part for use by subsequent parts
-- `None` indicates no data was shared by that part
-- Each solver defines its own `PartialResult` type based on what needs to be shared
+Parts return their answers as strings directly. Data sharing between parts is handled through mutations to the SharedData structure, not through return values.
 
 ### Example Solver Implementation
 
-**Independent Parts Example:**
+**Independent Parts Example (Zero-Copy):**
 ```rust
+use std::borrow::Cow;
+
+#[derive(Clone)]
 pub struct Year2023Day1;
 
 impl Solver for Year2023Day1 {
-    type Parsed = Vec<String>;
-    type PartialResult = ();  // No data shared between parts
+    type SharedData = Vec<String>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-        Ok(input.lines().map(|s| s.to_string()).collect())
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        Ok(Cow::Owned(input.lines().map(|s| s.to_string()).collect()))
     }
     
     fn solve_part(
-        parsed: &Self::Parsed, 
-        part: usize, 
-        _previous_partial: Option<&Self::PartialResult>
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+        shared: &mut Cow<'_, Self::SharedData>,
+        part: usize,
+    ) -> Result<String, SolveError> {
         match part {
-            1 => Ok(PartResult {
-                answer: solve_part_1(parsed),
-                partial: None,  // No data to share
-            }),
-            2 => Ok(PartResult {
-                answer: solve_part_2(parsed),
-                partial: None,
-            }),
+            1 => {
+                // Read-only operation - works with borrowed data (zero-copy)
+                Ok(solve_part_1(shared))
+            },
+            2 => {
+                // Read-only operation - works with borrowed data (zero-copy)
+                Ok(solve_part_2(shared))
+            },
             _ => Err(SolveError::PartNotImplemented(part)),
         }
     }
 }
 ```
 
-**Dependent Parts with Structured Data Example:**
+**Dependent Parts with Shared Data Example (Lazy Cloning):**
 ```rust
+use std::borrow::Cow;
+
+#[derive(Clone)]
 pub struct Year2023Day5;
 
-// Define the structured data to share between parts
-pub struct PathData {
-    visited_nodes: HashSet<String>,
-    optimal_path: Vec<String>,
-    total_cost: u64,
+// Define the shared data structure
+#[derive(Clone)]
+pub struct SharedData {
+    graph: Graph,
+    // Part 1 fills these
+    visited_nodes: Option<HashSet<String>>,
+    optimal_path: Option<Vec<String>>,
+    total_cost: Option<u64>,
 }
 
 impl Solver for Year2023Day5 {
-    type Parsed = Graph;
-    type PartialResult = PathData;
+    type SharedData = SharedData;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-        // Parse graph data
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        Ok(Cow::Owned(SharedData {
+            graph: parse_graph(input)?,
+            visited_nodes: None,
+            optimal_path: None,
+            total_cost: None,
+        }))
     }
     
     fn solve_part(
-        parsed: &Self::Parsed, 
-        part: usize, 
-        previous_partial: Option<&Self::PartialResult>
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+        shared: &mut Cow<'_, Self::SharedData>,
+        part: usize,
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
-                let (visited, path, cost) = find_shortest_path(parsed);
-                Ok(PartResult {
-                    answer: cost.to_string(),
-                    partial: Some(PathData {
-                        visited_nodes: visited,
-                        optimal_path: path,
-                        total_cost: cost,
-                    }),
-                })
+                // Need to mutate - call to_mut() to get owned data (triggers clone if borrowed)
+                let data = shared.to_mut();
+                let (visited, path, cost) = find_shortest_path(&data.graph);
+                
+                // Store for Part 2
+                data.visited_nodes = Some(visited);
+                data.optimal_path = Some(path);
+                data.total_cost = Some(cost);
+                
+                Ok(cost.to_string())
             },
             2 => {
-                // Part 2 uses the structured data from Part 1
-                if let Some(part1_data) = previous_partial {
-                    let result = find_alternative_path(
-                        parsed, 
-                        &part1_data.visited_nodes,
-                        &part1_data.optimal_path
-                    );
-                    Ok(PartResult {
-                        answer: result.to_string(),
-                        partial: None,  // Part 2 doesn't need to share data
-                    })
+                // Part 2 uses data from Part 1 if available (read-only access)
+                if let (Some(visited), Some(path)) = (&shared.visited_nodes, &shared.optimal_path) {
+                    let result = find_alternative_path(&shared.graph, visited, path);
+                    Ok(result.to_string())
                 } else {
                     // Can still solve independently if needed
-                    Ok(PartResult {
-                        answer: solve_part_2_independent(parsed),
-                        partial: None,
-                    })
+                    Ok(solve_part_2_independent(&shared.graph))
                 }
             },
             _ => Err(SolveError::PartNotImplemented(part)),
@@ -561,6 +527,138 @@ impl Solver for Year2023Day5 {
     }
 }
 ```
+
+## Zero-Copy Parsing Design
+
+### Overview
+
+The library implements zero-copy parsing using Rust's `Cow` (Clone-on-Write) type, allowing solvers to work with borrowed data when possible and only clone when mutation is required. This design provides significant performance benefits for read-only operations while maintaining flexibility for solvers that need to mutate data.
+
+### Key Design Decisions
+
+**1. `Cow<'_, SharedData>` in Trait Signatures**
+
+The `parse` method returns `Cow<'_, SharedData>` and `solve_part` takes `&mut Cow<'_, SharedData>`:
+- Enables zero-copy when data can be borrowed from the input string
+- Allows owned data when parsing requires transformation
+- Gives solvers control over when cloning occurs via `.to_mut()`
+
+**2. `ToOwned` Bound with `Clone` Constraint**
+
+```rust
+type SharedData: ToOwned + ?Sized
+where
+    <Self::SharedData as ToOwned>::Owned: Clone;
+```
+
+This bound ensures:
+- `SharedData` can be converted between borrowed and owned forms
+- The owned form can be cloned when needed
+- Supports both simple types (`Vec<T>`) and custom structs
+
+**3. Two Instance Types**
+
+- `SolverInstanceCow<'a, S>`: Holds `Cow<'a, S::SharedData>` directly, enabling true zero-copy
+- `SolverInstance<S>`: Holds owned data, wraps in `Cow::Borrowed` when solving
+
+### Performance Characteristics
+
+**Read-Only Operations (Zero-Copy):**
+```rust
+fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: usize) -> Result<String, SolveError> {
+    // No allocation! Works directly with borrowed data
+    let sum: i32 = shared.iter().sum();
+    Ok(sum.to_string())
+}
+```
+- Zero allocations for the shared data
+- Direct access to input-derived data
+- Optimal for solvers that only read data
+
+**Mutation (Lazy Cloning):**
+```rust
+fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: usize) -> Result<String, SolveError> {
+    // Clone only happens here, when we need to mutate
+    let data = shared.to_mut();
+    data.cache = Some(expensive_computation(&data.input));
+    Ok(data.cache.unwrap().to_string())
+}
+```
+- Clone occurs only when `.to_mut()` is called
+- Subsequent mutations work on the owned copy
+- Optimal for solvers that need to cache intermediate results
+
+### Usage Patterns
+
+**Pattern 1: Pure Read-Only Solver**
+```rust
+impl Solver for ReadOnlySolver {
+    type SharedData = Vec<i32>;
+    
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        // Return owned data (could be borrowed in advanced cases)
+        Ok(Cow::Owned(parse_numbers(input)?))
+    }
+    
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: usize) -> Result<String, SolveError> {
+        // All operations are read-only - no cloning occurs
+        match part {
+            1 => Ok(shared.iter().sum::<i32>().to_string()),
+            2 => Ok(shared.iter().product::<i32>().to_string()),
+            _ => Err(SolveError::PartNotImplemented(part)),
+        }
+    }
+}
+```
+
+**Pattern 2: Dependent Parts with Caching**
+```rust
+#[derive(Clone)]
+struct CachedData {
+    input: Vec<i32>,
+    part1_result: Option<i32>,
+}
+
+impl Solver for CachingSolver {
+    type SharedData = CachedData;
+    
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        Ok(Cow::Owned(CachedData {
+            input: parse_numbers(input)?,
+            part1_result: None,
+        }))
+    }
+    
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: usize) -> Result<String, SolveError> {
+        match part {
+            1 => {
+                // Need to cache - triggers clone if borrowed
+                let data = shared.to_mut();
+                let result = expensive_computation(&data.input);
+                data.part1_result = Some(result);
+                Ok(result.to_string())
+            },
+            2 => {
+                // Read cached value - no cloning needed
+                if let Some(cached) = shared.part1_result {
+                    Ok((cached * 2).to_string())
+                } else {
+                    // Fallback if part 1 wasn't run
+                    Ok(expensive_computation(&shared.input).to_string())
+                }
+            },
+            _ => Err(SolveError::PartNotImplemented(part)),
+        }
+    }
+}
+```
+
+### Benefits
+
+1. **Performance**: Zero allocations for read-only operations
+2. **Flexibility**: Solvers control when cloning occurs
+3. **Simplicity**: API is straightforward - use `.to_mut()` when you need to mutate
+4. **Compatibility**: Works with existing solver patterns, just add `Cow` wrapper
 
 ## Correctness Properties
 
@@ -610,8 +708,8 @@ impl Solver for Year2023Day5 {
 *For any* solver instance where Part 1 has been solved and produced a partial result, when solving Part 2, the previous partial result should be passed to Part 2's solve function, maintaining type safety.
 **Validates: Requirements 8.1, 8.2, 8.4**
 
-### Property 12: Independent parts work without partial results
-*For any* solver that uses `()` as its `PartialResult` type or returns `None` for partial data, solving parts should work correctly without requiring data from previous parts.
+### Property 12: Independent parts work without data sharing
+*For any* solver with simple SharedData types (e.g., Vec<i32>), solving parts should work correctly without parts modifying the shared data.
 **Validates: Requirements 8.3**
 
 ### Property 13: RegisterableSolver enables self-registration
@@ -684,7 +782,7 @@ When a solver is not found for a year-day combination:
 ### Part Solving
 - Invalid part numbers return `Err(SolveError::PartNotImplemented(part))`
 - Solve failures return `Err(SolveError::SolveFailed(custom_error))`
-- Implemented parts return `Ok(PartResult)` with the result
+- Implemented parts return `Ok(String)` with the answer
 
 The library should never panic during normal operation. All error conditions should be represented as `Result` types with descriptive error variants.
 
@@ -713,15 +811,13 @@ Property-based testing will be implemented using the `proptest` crate for Rust. 
 
 Property tests will verify:
 - **Property 1**: Solver creation preserves year/day parameters across random inputs
-- **Property 2**: Parsing consistency - parsed data matches direct parser calls
+- **Property 2**: Parsing consistency - SharedData matches direct parser calls
 - **Property 3**: Instance independence - multiple solvers don't interfere
 - **Property 4**: Error handling - invalid inputs produce errors, not panics
 - **Property 5**: Implemented parts return results
-- **Property 6**: Unimplemented parts return None
-- **Property 7**: Result indexing - parts stored at correct indices
-- **Property 8**: Result retrieval completeness
-- **Property 9**: Registry lookup - registered solvers can be found
-- **Property 10**: Missing solver indication
+- **Property 6**: Unimplemented parts return errors
+- **Property 7**: Registry lookup - registered solvers can be found
+- **Property 8**: Missing solver indication
 
 Each property-based test will be tagged with a comment referencing the correctness property it implements using the format:
 `// Feature: aoc-solver-library, Property N: <property description>`
@@ -755,37 +851,38 @@ tests/
 The design supports three common patterns for part relationships:
 
 1. **Independent Parts**: Part 2 solves completely independently of Part 1
-   - Use `type PartialResult = ()` to indicate no data sharing
-   - Return `partial: None` in the `PartResult`
-   - Ignore the `previous_partial` parameter
+   - Use a simple type for `SharedData` (e.g., `Vec<i32>`, `HashMap<String, u32>`)
+   - Parts just read from the shared data without modifying it
+   - No additional fields needed
 
-2. **Dependent Parts with Structured Data**: Part 2 requires structured data from Part 1
-   - Define a custom `PartialResult` type (struct, enum, etc.) containing the needed data
-   - Part 1 returns `partial: Some(data)` with the structured information
-   - Part 2 receives it via `previous_partial` parameter with full type safety
-   - Each solver can define its own unique `PartialResult` type
+2. **Dependent Parts with Shared State**: Part 2 uses data computed by Part 1
+   - Define a `SharedData` struct with the parsed input plus `Option<T>` fields for intermediate results
+   - Part 1 fills in the `Option` fields with computed data
+   - Part 2 reads from those fields if they're `Some`, or computes independently if `None`
+   - Each solver defines exactly what fields it needs
 
 3. **Hybrid Parts**: Part 2 can use Part 1's data if available, but can also solve independently
-   - Check if `previous_partial.is_some()`
+   - Check if the `Option` fields are `Some`
    - Use the data for optimization or as a starting point if present
-   - Fall back to independent solving if not available
+   - Fall back to independent solving if `None`
 
 **Type Safety Benefits:**
-- Each solver defines exactly what type of data it shares between parts
-- The compiler ensures Part 2 receives the correct type from Part 1
+- Each solver defines exactly what data structure it needs
+- The compiler ensures all parts work with the same `SharedData` type
 - No runtime type checking or casting needed
-- Different solvers can share completely different types of data
+- Different solvers can use completely different data structures
+- Easy to extend to 3+ parts by adding more `Option` fields
 
-The `SolverInstance` will automatically:
-- Store partial results as parts are solved
-- Pass the previous part's partial result to the next part
-- Maintain type safety through generics
+**Scalability:**
+- For problems with many parts, just add more `Option` fields to `SharedData`
+- No need for complex `PartialResult` types that grow with each part
+- Each part can read from and write to any field it needs
 
 ### Extensibility Mechanism
 
 New solvers are added by:
 1. Creating a new struct (e.g., `Year2024Day15`)
-2. Implementing the `Solver` trait with appropriate `Parsed` and `PartialResult` types
+2. Implementing the `Solver` trait with appropriate `SharedData` type
 3. Registering the solver in the registry using a helper macro
 
 Example registration:
@@ -808,21 +905,20 @@ This approach:
 
 ### Type Erasure for Registry
 
-Since each solver has a different `Parsed` and `PartialResult` type, the registry needs type erasure to store and return different solver types uniformly.
+Since each solver has a different `SharedData` type, the registry needs type erasure to store and return different solver types uniformly.
 
 **Approach**: Define a `DynSolver` trait that provides a type-erased interface:
 
 ```rust
 pub trait DynSolver {
-    fn solve(&mut self, part: usize) -> Option<String>;
-    fn results(&self) -> &[Option<String>];
+    fn solve(&mut self, part: usize) -> Result<String, SolveError>;
     fn year(&self) -> u32;
     fn day(&self) -> u32;
 }
 
-impl<S: Solver> DynSolver for SolverInstance<S> {
-    fn solve(&mut self, part: usize) -> Option<String> {
-        // Implementation that handles partial results internally
+impl<'a, S: Solver> DynSolver for SolverInstanceCow<'a, S> {
+    fn solve(&mut self, part: usize) -> Result<String, SolveError> {
+        S::solve_part(&mut self.shared, part)
     }
     // ... other methods
 }
@@ -830,7 +926,7 @@ impl<S: Solver> DynSolver for SolverInstance<S> {
 
 The registry stores factory functions:
 ```rust
-type SolverFactory = Box<dyn Fn(&str) -> Result<Box<dyn DynSolver>, ParseError>>;
+type SolverFactory = Box<dyn for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>>;
 
 pub struct SolverRegistry {
     solvers: HashMap<(u32, u32), SolverFactory>,
@@ -839,13 +935,14 @@ pub struct SolverRegistry {
 
 This allows:
 - Registry to store different solver types uniformly
-- Each `SolverInstance<S>` maintains full type safety internally
+- Each `SolverInstanceCow<S>` maintains full type safety internally
 - Factory functions create the appropriate concrete type
 - Type erasure only at the registry boundary
+- Zero-copy parsing via lifetime parameter on the factory
 
 ### Part Indexing
 
-Parts will be 1-indexed to match Advent of Code conventions (Part 1, Part 2), but stored in a 0-indexed vector internally. The API will handle the conversion transparently.
+Parts are 1-indexed to match Advent of Code conventions (Part 1, Part 2).
 
 ### Result Type
 
@@ -856,71 +953,66 @@ All part results are returned as `String` to provide a uniform interface, even t
 ### Step 1: Create the solver file (e.g., `src/solvers/year2023/day05.rs`)
 
 ```rust
-use crate::{Solver, ParseError, PartResult};
+use crate::{Solver, ParseError, SolveError};
 use std::collections::HashSet;
 
 // Define your solver struct
 pub struct Year2023Day5;
 
-// Define what data structure you need to share between parts (if any)
-// Use () if parts are independent
-pub struct Day5Partial {
-    winning_numbers: HashSet<u32>,
-    total_cards: usize,
+// Define the shared data structure
+pub struct Day5SharedData {
+    cards: Vec<Card>,
+    winning_numbers: Option<HashSet<u32>>,
+    total_cards: Option<usize>,
 }
 
 impl Solver for Year2023Day5 {
-    // Define the parsed input type
-    type Parsed = Vec<Card>;
-    
-    // Define what data to share between parts
-    type PartialResult = Day5Partial;
+    // Define the shared data type
+    type SharedData = Day5SharedData;
     
     // Parse the input string into your data structure
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
-        input.lines()
+    fn parse(input: &str) -> Result<Self::SharedData, ParseError> {
+        let cards = input.lines()
             .map(|line| parse_card(line))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ParseError::InvalidFormat(e))
+            .map_err(|e| ParseError::InvalidFormat(e))?;
+        Ok(Day5SharedData {
+            cards,
+            winning_numbers: None,
+            total_cards: None,
+        })
     }
     
     // Solve each part
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Self::SharedData,
         part: usize,
-        previous_partial: Option<&Self::PartialResult>,
-    ) -> Option<PartResult<Self::PartialResult>> {
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
                 // Solve part 1
-                let winning_numbers = find_winning_numbers(parsed);
+                let winning_numbers = find_winning_numbers(&shared.cards);
                 let answer = calculate_points(&winning_numbers);
                 
-                // Return answer and data for part 2
-                Some(PartResult {
-                    answer: answer.to_string(),
-                    partial: Some(Day5Partial {
-                        winning_numbers,
-                        total_cards: parsed.len(),
-                    }),
-                })
+                // Store data for part 2
+                shared.winning_numbers = Some(winning_numbers);
+                shared.total_cards = Some(shared.cards.len());
+                
+                Ok(answer.to_string())
             }
             2 => {
                 // Part 2 can use data from part 1
-                let answer = if let Some(part1_data) = previous_partial {
+                let answer = if let Some(ref winning_numbers) = shared.winning_numbers {
                     // Use the winning numbers from part 1
-                    calculate_total_cards(parsed, &part1_data.winning_numbers)
+                    calculate_total_cards(&shared.cards, winning_numbers)
                 } else {
                     // Or solve independently if part 1 wasn't run
-                    calculate_total_cards_independent(parsed)
+                    calculate_total_cards_independent(&shared.cards)
                 };
                 
-                Some(PartResult {
-                    answer: answer.to_string(),
-                    partial: None, // No more parts after this
-                })
+                Ok(answer.to_string())
             }
-            _ => None, // Invalid part number
+            _ => Err(SolveError::PartNotImplemented(part)),
         }
     }
 }
@@ -977,22 +1069,20 @@ let input = "your input data here";
 // Create solver instance - returns Box<dyn DynSolver>
 let mut solver = registry.create_solver(2023, 5, input).unwrap();
 
-// Solve part 1 (computes and caches the result)
-if let Some(answer) = solver.solve(1) {
-    println!("Part 1: {}", answer);
+// Solve part 1 (computes the result)
+match solver.solve(1) {
+    Ok(answer) => println!("Part 1: {}", answer),
+    Err(e) => eprintln!("Error: {}", e),
 }
 
-// Solve part 2 (computes and caches, automatically gets part 1's partial data)
-if let Some(answer) = solver.solve(2) {
-    println!("Part 2: {}", answer);
+// Solve part 2 (computes, can use data stored by part 1 in SharedData)
+match solver.solve(2) {
+    Ok(answer) => println!("Part 2: {}", answer),
+    Err(e) => eprintln!("Error: {}", e),
 }
 
-// Access cached results without recomputation
-let all_results = solver.results();
-println!("All results: {:?}", all_results);
-
-// Note: Calling solve(1) again would recompute Part 1
-// Use results() to access cached answers
+// Note: Each solve() call recomputes the result
+// Solvers can cache intermediate data in SharedData if needed
 ```
 
 ### Registry Implementation Details
@@ -1032,8 +1122,8 @@ impl SolverRegistry {
 macro_rules! register_solver {
     ($registry:expr, $solver:ty, $year:expr, $day:expr) => {
         $registry.register($year, $day, |input: &str| {
-            let parsed = <$solver>::parse(input)?;
-            Ok(Box::new(SolverInstance::<$solver>::new($year, $day, parsed)))
+            let shared = <$solver>::parse(input)?;
+            Ok(Box::new(SolverInstance::<$solver>::new($year, $day, shared)))
         });
     };
 }
@@ -1047,39 +1137,31 @@ For problems where parts don't share data:
 pub struct Year2023Day1;
 
 impl Solver for Year2023Day1 {
-    type Parsed = Vec<String>;
-    type PartialResult = (); // No data sharing
+    type SharedData = Vec<String>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData, ParseError> {
         Ok(input.lines().map(|s| s.to_string()).collect())
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Self::SharedData,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Option<PartResult<Self::PartialResult>> {
-        let answer = match part {
-            1 => calculate_part1(parsed),
-            2 => calculate_part2(parsed),
-            _ => return None,
-        };
-        
-        Some(PartResult {
-            answer: answer.to_string(),
-            partial: None, // No data to share
-        })
+    ) -> Result<String, SolveError> {
+        match part {
+            1 => Ok(calculate_part1(shared)),
+            2 => Ok(calculate_part2(shared)),
+            _ => Err(SolveError::PartNotImplemented(part)),
+        }
     }
 }
 ```
 
 **Summary of what a developer needs to provide:**
 1. A struct for the solver (e.g., `Year2023Day5`)
-2. Define `Parsed` type (how to represent the input)
-3. Define `PartialResult` type (what data to share between parts, or `()` if none)
-4. Implement `parse()` to transform input string to `Parsed`
-5. Implement `solve_part()` to solve each part
-6. One line to register: `register_solver!(registry, Year2023Day5, 2023, 5);`
+2. Define `SharedData` type (how to represent the input and intermediate data)
+3. Implement `parse()` to transform input string to `SharedData`
+4. Implement `solve_part()` to solve each part with mutable access to shared data
+5. One line to register: `register_solver!(registry, Year2023Day5, 2023, 5);`
 
 ## Workspace Structure and Procedural Macro
 
@@ -1145,7 +1227,7 @@ pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
 With the derive macro, solver registration becomes trivial:
 
 ```rust
-use aoc_solver::{Solver, ParseError, PartResult, SolveError};
+use aoc_solver::{Solver, ParseError, SolveError};
 use aoc_solver_macros::AutoRegisterSolver;
 
 #[derive(AutoRegisterSolver)]
@@ -1153,18 +1235,16 @@ use aoc_solver_macros::AutoRegisterSolver;
 struct Day1Solver;
 
 impl Solver for Day1Solver {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData, ParseError> {
         // parsing logic
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Self::SharedData,
         part: usize,
-        _previous: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         // solving logic
     }
 }
@@ -1255,9 +1335,9 @@ impl Solver for Day1Solver { /* ... */ }
 ### Main Library (aoc-solver)
 - **inventory**: Plugin system for automatic solver discovery and registration (version 0.3+)
 - **aoc-solver-macros**: Procedural macro for derive-based registration (workspace member)
-- **proptest**: Property-based testing framework (version 1.0+, dev-dependency)
+- **thiserror**: Derive macro for error types (version 2.0+)
+- **proptest**: Property-based testing framework (version 1.0+, dev-dependency, optional)
 - Standard library only for core functionality
-- Optional: **anyhow** for error handling convenience
 
 ### Procedural Macro Crate (aoc-solver-macros)
 - **syn**: Parsing Rust code (version 2.0+ with "full" features)
@@ -1279,7 +1359,7 @@ aoc-solver-library/          # Workspace root
 │   ├── src/
 │   │   ├── lib.rs          # Main entry point with documentation and re-exports
 │   │   ├── error.rs        # ParseError, SolveError, SolverError, RegistrationError types
-│   │   ├── solver.rs       # Solver trait and PartResult struct
+│   │   ├── solver.rs       # Solver trait
 │   │   ├── instance.rs     # SolverInstance and DynSolver trait
 │   │   └── registry.rs     # RegistryBuilder, SolverRegistry, RegisterableSolver, SolverPlugin
 │   └── examples/
@@ -1315,7 +1395,7 @@ aoc-solver-library/          # Workspace root
 
 4. **Type Safety**: The design maintains compile-time type safety within each `SolverInstance<S>`, only using type erasure (`Box<dyn DynSolver>`) at the registry boundary.
 
-5. **Flexible Part Dependencies**: The `PartialResult` associated type allows each solver to define exactly what data (if any) to share between parts, with full type safety.
+5. **Flexible Part Dependencies**: The `SharedData` type allows each solver to define exactly what data to share between parts, with full type safety through mutable access.
 
 ### Testing Strategy
 
@@ -1330,9 +1410,9 @@ aoc-solver-library/          # Workspace root
 
 Users of this library will:
 1. Implement the `Solver` trait for their problem
-2. Register their solver with a `SolverRegistry`
+2. Register their solver with a `RegistryBuilder` and build a `SolverRegistry`
 3. Create solver instances and call `solve()` for each part
-4. Access cached results with `results()`
+4. Use `SharedData` to cache intermediate results between parts if needed
 
 See `examples/` directory for complete working demonstrations.
 
@@ -1350,7 +1430,7 @@ All 11 requirements have been fully implemented:
 5. **Easy Extensibility** - Simple trait implementation + registration
 6. **Consistent Interface** - Uniform API across all solvers
 7. **Type Safety** - Full compile-time type checking via Rust's type system
-8. **Part Dependencies** - `PartialResult` system for type-safe data sharing
+8. **Part Dependencies** - `SharedData` system for type-safe data sharing through mutation
 9. **Plugin System** - Inventory-based automatic registration with filtering
 10. **Builder Pattern** - Fluent API with immutable registry and duplicate detection
 11. **Derive Macro** - `#[derive(AutoRegisterSolver)]` for zero-boilerplate registration
@@ -1359,7 +1439,7 @@ All 11 requirements have been fully implemented:
 
 The implementation includes several improvements:
 
-1. **Result-Based Error Handling**: Uses `Result<PartResult, SolveError>` instead of `Option<PartResult>`:
+1. **Result-Based Error Handling**: Uses `Result<String, SolveError>` instead of `Option<String>`:
    - Distinguishes "not implemented" from "solve failed"
    - Supports custom error wrapping with `SolveFailed(Box<dyn Error>)`
    - Thread-safe with `Send + Sync` bounds
@@ -1409,8 +1489,7 @@ The implementation is organized into focused modules:
 - `RegistrationError`: Duplicate solver detection
 
 **`solver.rs`**: Core trait definition
-- `Solver` trait with `Parsed` and `PartialResult` associated types
-- `PartResult<T>` struct for returning answers with optional partial data
+- `Solver` trait with `SharedData` associated type
 - Comprehensive documentation with examples
 
 **`instance.rs`**: Concrete implementation
@@ -1452,14 +1531,14 @@ pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
 ### Example Implementations
 
 **Independent Parts** (`examples/independent_parts.rs`):
-- Demonstrates `type PartialResult = ()`
+- Demonstrates simple `SharedData` types (e.g., `Vec<i32>`)
 - Shows basic parsing and solving
 - Includes 6 unit tests covering parsing, solving, and error cases
 
 **Dependent Parts** (`examples/dependent_parts.rs`):
-- Demonstrates custom `PartialResult` type
-- Shows data sharing between parts
-- Includes 5 unit tests for partial results and independence
+- Demonstrates custom `SharedData` struct with `Option` fields
+- Shows data sharing between parts through mutation
+- Includes 5 unit tests for data flow and independence
 
 **Plugin System** (`examples/plugin_system.rs`):
 - Demonstrates both derive macro and manual registration
@@ -1504,7 +1583,7 @@ pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
 [dependencies]
 inventory = { workspace = true }
 aoc-solver-macros = { path = "../aoc-solver-macros" }
-thiserror = "1.0"
+thiserror = "2.0"
 
 [dev-dependencies]
 # proptest = "1.0"  # Optional, for property-based tests
@@ -1525,10 +1604,10 @@ proc-macro2 = "1.0"
 ```toml
 [workspace]
 members = ["aoc-solver", "aoc-solver-macros"]
-resolver = "2"
+resolver = "3"
 
 [workspace.dependencies]
-inventory = "0.3"
+inventory = "0.3.21"
 ```
 
 ### Running the Examples

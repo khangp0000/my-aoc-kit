@@ -6,8 +6,8 @@ The `#[aoc_solver]` attribute macro simplifies Advent of Code solver implementat
 
 The macro provides:
 - Automatic trait implementation generation
-- Flexible return type handling (String, Result, PartResult)
-- Support for both independent and dependent parts
+- Flexible return type handling (String, Result<String>)
+- Support for both independent and dependent parts through SharedData mutation
 - Compile-time validation with helpful error messages
 - Compatibility with existing `AutoRegisterSolver` derive macro
 
@@ -48,55 +48,40 @@ Output TokenStream
 ```rust
 #[aoc_solver(max_parts = 2)]
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Parsed, ParseError> { ... }
-    fn part1(parsed: &Parsed) -> String { ... }
-    fn part2(parsed: &Parsed) -> Result<String, SolveError> { ... }
+    fn parse(input: &str) -> Result<SharedData, ParseError> { ... }
+    fn part1(shared: &mut Vec<i32>) -> String { ... }
+    fn part2(shared: &mut Vec<i32>) -> Result<String, SolveError> { ... }
 }
 ```
 
 ### Output Structure
 
 ```rust
-// Generated struct (if not exists)
-struct Day1;
-
-// Original impl block (preserved)
+// Modified impl block (without type definitions)
 impl Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
-    
     fn parse(input: &str) -> Result<Vec<i32>, ParseError> { ... }
-    fn part1(parsed: &Vec<i32>) -> String { ... }
-    fn part2(parsed: &Vec<i32>) -> Result<String, SolveError> { ... }
+    fn part1(shared: &mut Vec<i32>) -> String { ... }
+    fn part2(shared: &mut Vec<i32>) -> Result<String, SolveError> { ... }
 }
 
 // Generated Solver trait impl
 impl ::aoc_solver::Solver for Day1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Self::Parsed, ::aoc_solver::ParseError> {
-        <Day1>::parse(input)
+    fn parse(input: &str) -> Result<std::borrow::Cow<'_, Self::SharedData>, ::aoc_solver::ParseError> {
+        <Day1>::parse(input).map(std::borrow::Cow::Owned)
     }
     
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut std::borrow::Cow<'_, Self::SharedData>,
         part: usize,
-        previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<::aoc_solver::PartResult<Self::PartialResult>, ::aoc_solver::SolveError> {
+    ) -> Result<String, ::aoc_solver::SolveError> {
         match part {
-            1 => {
-                let answer = <Day1>::part1(parsed);
-                Ok(::aoc_solver::PartResult { answer, partial: None })
-            }
-            2 => {
-                let answer = <Day1>::part2(parsed)?;
-                Ok(::aoc_solver::PartResult { answer, partial: None })
-            }
-            _ => Err(::aoc_solver::SolveError::PartOutOfRange(part)),
+            1 => Ok(<Day1>::part1(shared.to_mut())),
+            2 => <Day1>::part2(shared.to_mut()),
+            _ => Err(::aoc_solver::SolveError::PartNotImplemented(part)),
         }
     }
 }
@@ -104,7 +89,7 @@ impl ::aoc_solver::Solver for Day1 {
 
 ## Data Models
 
-### Parsed Macro Input
+### Macro Input Structure
 
 ```rust
 struct MacroInput {
@@ -114,8 +99,7 @@ struct MacroInput {
 }
 
 struct ExtractedComponents {
-    parsed_type: Option<Type>,
-    partial_result_type: Option<Type>,
+    shared_data_type: Option<Type>,
     parse_fn: Option<ImplItemFn>,
     part_fns: Vec<PartFunction>,
 }
@@ -126,23 +110,13 @@ struct PartFunction {
     signature: PartSignature,
 }
 
-enum PartSignature {
-    Independent {
-        parsed_param: Type,
-        return_type: ReturnType,
-    },
-    Dependent {
-        parsed_param: Type,
-        prev_param: Type,
-        return_type: ReturnType,
-    },
+struct PartSignature {
+    return_type: ReturnType,
 }
 
 enum ReturnType {
     String,
     ResultString,
-    PartResult,
-    ResultPartResult,
 }
 ```
 
@@ -151,55 +125,39 @@ enum ReturnType {
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
 ### Property 1: Type forwarding preserves user types
-*For any* valid type definitions in the impl block, the generated Solver trait SHALL use those exact types for Parsed and PartialResult
-**Validates: Requirements 2.1, 2.2**
+*For any* valid SharedData type definition in the impl block, the generated Solver trait SHALL use that exact type
+**Validates: Requirements 2.1**
 
-### Property 2: String returns are wrapped correctly
-*For any* part function returning String, the generated code SHALL wrap it in PartResult with partial: None
-**Validates: Requirements 4.1, 6.2**
+### Property 2: String returns are passed through correctly
+*For any* part function returning String, the generated code SHALL return it directly
+**Validates: Requirements 4.1**
 
-### Property 3: Result returns are unwrapped and wrapped
-*For any* part function returning Result<String, SolveError>, the generated code SHALL unwrap with ? and wrap in PartResult
-**Validates: Requirements 4.2, 6.2**
-
-### Property 4: PartResult returns are passed through
-*For any* part function returning PartResult<T>, the generated code SHALL use it directly without modification
-**Validates: Requirements 4.3**
-
-### Property 5: Result<PartResult> returns are passed through
-*For any* part function returning Result<PartResult<T>, SolveError>, the generated code SHALL use it directly without modification
-**Validates: Requirements 4.4**
+### Property 3: Result returns are passed through correctly
+*For any* part function returning Result<String, SolveError>, the generated code SHALL return it directly
+**Validates: Requirements 4.2**
 
 ### Property 6: Part validation enforces completeness
 *For any* max_parts value N, the macro SHALL verify that all parts from 1 to N exist
 **Validates: Requirements 5.1**
 
-### Property 7: Independent parts receive only parsed data
-*For any* part function with one parameter, the generated code SHALL call it with only the parsed data
+### Property 7: All parts receive mutable shared data
+*For any* part function, the generated code SHALL call it with `&mut SharedData`
 **Validates: Requirements 6.1**
 
-### Property 8: Dependent parts receive previous partial
-*For any* part function with two parameters, the generated code SHALL pass the previous_partial parameter
+### Property 8: Parts can modify shared data
+*For any* part function that modifies SharedData, those modifications SHALL persist for subsequent parts
 **Validates: Requirements 7.1**
 
-### Property 9: Partial data flows between parts
-*For any* part returning PartResult with partial: Some(data), that data SHALL be available to the next part's prev parameter
-**Validates: Requirements 7.2**
-
-### Property 10: Struct generation avoids duplicates
-*For any* struct name, if the struct exists, the macro SHALL not generate a duplicate declaration
-**Validates: Requirements 9.1, 9.2**
-
-### Property 11: Fully qualified paths are used
+### Property 9: Fully qualified paths are used
 *For any* generated code, all library types SHALL use fully qualified paths starting with ::aoc_solver::
 **Validates: Requirements 10.1**
 
-### Property 12: Valid parts dispatch correctly
+### Property 10: Valid parts dispatch correctly
 *For any* part number from 1 to max_parts, solve_part SHALL call the corresponding part function
 **Validates: Requirements 11.1**
 
-### Property 13: Out-of-range parts return error
-*For any* part number greater than max_parts, solve_part SHALL return Err(SolveError::PartOutOfRange(part))
+### Property 11: Out-of-range parts return error
+*For any* part number greater than max_parts, solve_part SHALL return Err(SolveError::PartNotImplemented(part))
 **Validates: Requirements 11.2**
 
 ## Error Handling
@@ -213,20 +171,19 @@ The macro generates helpful compile-time errors for common mistakes:
 compile_error!("aoc_solver: missing required attribute 'max_parts'. Use: #[aoc_solver(max_parts = N)]");
 ```
 
-#### Missing Type Definitions
+#### Missing Type Definition
 ```rust
-compile_error!("aoc_solver: missing required type 'Parsed'. Add: type Parsed = YourType;");
-compile_error!("aoc_solver: missing required type 'PartialResult'. Add: type PartialResult = YourType; (or () for independent parts)");
+compile_error!("aoc_solver: missing required type 'SharedData'. Add: type SharedData = YourType;");
 ```
 
 #### Missing parse Function
 ```rust
-compile_error!("aoc_solver: missing required 'parse' function. Add: fn parse(input: &str) -> Result<Parsed, ParseError> { ... }");
+compile_error!("aoc_solver: missing required 'parse' function. Add: fn parse(input: &str) -> Result<SharedData, ParseError> { ... }");
 ```
 
 #### Missing part1
 ```rust
-compile_error!("aoc_solver: at least 'part1' function is required. Add: fn part1(parsed: &Parsed) -> String { ... }");
+compile_error!("aoc_solver: at least 'part1' function is required. Add: fn part1(shared: &mut SharedData) -> String { ... }");
 ```
 
 #### Missing Parts in Range
@@ -246,34 +203,15 @@ compile_error!("aoc_solver: max_parts must be at least 1");
 
 #### Unsupported Return Type
 ```rust
-compile_error!("aoc_solver: part1 return type is not supported. Must be one of: String, Result<String, SolveError>, PartResult<PartialResult>, or Result<PartResult<PartialResult>, SolveError>");
+compile_error!("aoc_solver: part1 return type is not supported. Must be one of: String or Result<String, SolveError>");
 ```
 
 ### Runtime Errors
 
 The generated code returns appropriate errors:
 
-- `SolveError::PartOutOfRange(part)`: When part number > max_parts
+- `SolveError::PartNotImplemented(part)`: When part number > max_parts
 - `SolveError::SolveFailed(msg)`: When part function returns Err
-- `SolveError::PartNotImplemented(part)`: Reserved for manual implementations (not used by macro)
-
-### New Error Variant
-
-Add to `aoc-solver/src/error.rs`:
-
-```rust
-pub enum SolveError {
-    // ... existing variants ...
-    
-    /// Part number is out of range (exceeds max_parts)
-    PartOutOfRange(usize),
-}
-
-impl Display for SolveError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            // ... existing arms ...
-            SolveError::PartOutOfRange(part) => {
                 write!(f, "Part {} is out of range", part)
             }
         }
@@ -288,7 +226,7 @@ impl Display for SolveError {
 Unit tests verify specific macro behaviors:
 
 1. **Attribute Parsing**: Test extraction of max_parts value
-2. **Type Extraction**: Test extraction of Parsed and PartialResult types
+2. **Type Extraction**: Test extraction of SharedData type
 3. **Function Detection**: Test detection of parse and part functions
 4. **Error Generation**: Test that appropriate compile_error! messages are generated
 
@@ -348,6 +286,66 @@ pub fn aoc_solver(attr: TokenStream, item: TokenStream) -> TokenStream {
 3. **Generate Trait Impl**: Create Solver trait implementation
 4. **Use Fully Qualified Paths**: Avoid import dependencies
 
+### Cow Handling in Generated Code
+
+The macro bridges the gap between user-friendly part function signatures and the actual Solver trait requirements:
+
+**User writes:**
+```rust
+fn part1(shared: &mut Vec<i32>) -> String {
+    shared.iter().sum::<i32>().to_string()
+}
+```
+
+**Solver trait requires:**
+```rust
+fn solve_part(
+    shared: &mut Cow<'_, Self::SharedData>,
+    part: usize,
+) -> Result<String, SolveError>
+```
+
+**Macro generates:**
+```rust
+fn solve_part(
+    shared: &mut ::std::borrow::Cow<'_, Self::SharedData>,
+    part: usize,
+) -> Result<String, ::aoc_solver::SolveError> {
+    match part {
+        1 => {
+            // Call .to_mut() to get &mut SharedData from Cow
+            Ok(<Day1>::part1(shared.to_mut()))
+        }
+        _ => Err(::aoc_solver::SolveError::PartNotImplemented(part)),
+    }
+}
+```
+
+**Key transformations:**
+
+1. **Parse function wrapping**: User's `Result<SharedData, ParseError>` is wrapped with `Cow::Owned`:
+   ```rust
+   fn parse(input: &str) -> Result<::std::borrow::Cow<'_, Self::SharedData>, ::aoc_solver::ParseError> {
+       <Day1>::parse(input).map(::std::borrow::Cow::Owned)
+   }
+   ```
+
+2. **Part function calls**: User's `&mut SharedData` parameter is obtained via `.to_mut()`:
+   ```rust
+   <Day1>::part1(shared.to_mut())
+   ```
+   This triggers cloning only when the Cow contains borrowed data, enabling zero-copy optimization.
+
+3. **Return type wrapping**: User's return types are wrapped appropriately:
+   - `String` → `Ok(result)`
+   - `Result<String, SolveError>` → passed through directly
+
+**Benefits:**
+- Users write simple, intuitive signatures
+- Macro handles all Cow complexity automatically
+- Zero-copy optimization works transparently
+- Type safety maintained throughout
+
 ### Return Type Detection
 
 The macro analyzes return types using pattern matching:
@@ -357,8 +355,6 @@ fn detect_return_type(ty: &Type) -> Result<ReturnType, Error> {
     match ty {
         Type::Path(path) if is_string(path) => Ok(ReturnType::String),
         Type::Path(path) if is_result_string(path) => Ok(ReturnType::ResultString),
-        Type::Path(path) if is_part_result(path) => Ok(ReturnType::PartResult),
-        Type::Path(path) if is_result_part_result(path) => Ok(ReturnType::ResultPartResult),
         _ => Err(Error::UnsupportedReturnType),
     }
 }

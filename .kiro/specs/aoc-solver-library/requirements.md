@@ -8,9 +8,9 @@ This document specifies the requirements for an Advent of Code solver library. T
 
 - **Solver**: A component that handles a specific Advent of Code problem identified by a year and day combination
 - **Input Parser**: A function within a Solver that transforms raw input text into an intermediate data structure
-- **Intermediate Type**: The parsed representation of input data specific to each Solver
+- **SharedData**: The data structure holding input data and intermediate results that can be mutated by parts
 - **Part**: A sub-problem within a day's challenge (typically Part 1 and Part 2)
-- **Part Result**: The solution output for a specific Part, stored as Option<T> where None indicates unsolved
+- **Part Result**: The solution output for a specific Part, returned as a String
 - **AOC Library**: The Advent of Code solver library system
 
 ## Requirements
@@ -22,7 +22,7 @@ This document specifies the requirements for an Advent of Code solver library. T
 #### Acceptance Criteria
 
 1. WHEN a developer creates a Solver with year, day, and input string THEN the AOC Library SHALL instantiate a new Solver instance with the specified parameters
-2. WHEN a Solver is created THEN the AOC Library SHALL invoke the Input Parser to transform the raw input string into the Intermediate Type
+2. WHEN a Solver is created THEN the AOC Library SHALL invoke the Input Parser to transform the raw input string into the SharedData structure
 3. WHEN multiple Solvers are created for different year-day combinations THEN the AOC Library SHALL maintain each Solver independently without interference
 4. WHEN a Solver is created with invalid input THEN the AOC Library SHALL handle the error gracefully and provide meaningful feedback
 
@@ -33,8 +33,8 @@ This document specifies the requirements for an Advent of Code solver library. T
 #### Acceptance Criteria
 
 1. WHEN a Solver defines an Input Parser THEN the AOC Library SHALL use that parser to process the input string during Solver creation
-2. WHEN different Solvers define different Intermediate Types THEN the AOC Library SHALL support type-safe parsing for each Solver
-3. WHEN an Input Parser processes valid input THEN the AOC Library SHALL store the resulting Intermediate Type within the Solver
+2. WHEN different Solvers define different SharedData types THEN the AOC Library SHALL support type-safe parsing for each Solver
+3. WHEN an Input Parser processes valid input THEN the AOC Library SHALL store the resulting SharedData within the Solver
 4. WHEN an Input Parser encounters malformed input THEN the AOC Library SHALL propagate the parsing error to the caller
 
 ### Requirement 3
@@ -87,7 +87,7 @@ This document specifies the requirements for an Advent of Code solver library. T
 
 #### Acceptance Criteria
 
-1. WHEN defining Solvers with different Intermediate Types THEN the AOC Library SHALL enforce type safety through the Rust type system
+1. WHEN defining Solvers with different SharedData types THEN the AOC Library SHALL enforce type safety through the Rust type system
 2. WHEN calling solve functions THEN the AOC Library SHALL ensure type correctness for inputs and outputs at compile time
 3. WHEN composing Solvers THEN the AOC Library SHALL prevent type mismatches through static type checking
 4. WHEN using generic functionality THEN the AOC Library SHALL maintain type safety across all generic operations

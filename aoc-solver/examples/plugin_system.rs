@@ -6,8 +6,9 @@
 //! Run with: cargo run --example plugin_system
 
 use aoc_solver::{
-    AutoRegisterSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver, SolverPlugin,
+    AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver, SolverPlugin,
 };
+use std::borrow::Cow;
 
 // ============================================================================
 // Plugin Day 1: Simple solver tagged as "easy" and "2023"
@@ -19,10 +20,9 @@ use aoc_solver::{
 pub struct PluginDay1;
 
 impl Solver for PluginDay1 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -30,19 +30,16 @@ impl Solver for PluginDay1 {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat(format!("Expected integer: {}", line)))
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
 
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
-            1 => Ok(PartResult {
-                answer: parsed.iter().sum::<i32>().to_string(),
-                partial: None,
-            }),
+            1 => Ok(shared.iter().sum::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
         }
     }
@@ -56,10 +53,9 @@ impl Solver for PluginDay1 {
 pub struct PluginDay2;
 
 impl Solver for PluginDay2 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -67,19 +63,16 @@ impl Solver for PluginDay2 {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat(format!("Expected integer: {}", line)))
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
 
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
-            1 => Ok(PartResult {
-                answer: parsed.iter().product::<i32>().to_string(),
-                partial: None,
-            }),
+            1 => Ok(shared.iter().product::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
         }
     }
@@ -103,10 +96,9 @@ inventory::submit! {
 pub struct PluginDay3;
 
 impl Solver for PluginDay3 {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -114,21 +106,18 @@ impl Solver for PluginDay3 {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat(format!("Expected integer: {}", line)))
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
 
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
-                let max = parsed.iter().max().copied().unwrap_or(0);
-                Ok(PartResult {
-                    answer: max.to_string(),
-                    partial: None,
-                })
+                let max = shared.iter().max().copied().unwrap_or(0);
+                Ok(max.to_string())
             }
             _ => Err(SolveError::PartNotImplemented(part)),
         }
@@ -154,10 +143,9 @@ inventory::submit! {
 pub struct PluginDay4Derive;
 
 impl Solver for PluginDay4Derive {
-    type Parsed = Vec<i32>;
-    type PartialResult = ();
+    type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -165,21 +153,18 @@ impl Solver for PluginDay4Derive {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat(format!("Expected integer: {}", line)))
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
 
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
-                let min = parsed.iter().min().copied().unwrap_or(0);
-                Ok(PartResult {
-                    answer: min.to_string(),
-                    partial: None,
-                })
+                let min = shared.iter().min().copied().unwrap_or(0);
+                Ok(min.to_string())
             }
             _ => Err(SolveError::PartNotImplemented(part)),
         }
@@ -277,12 +262,14 @@ fn main() {
     let registry = RegistryBuilder::new()
         .register(2022, 1, |input: &str| {
             // Manual registration for a custom solver
-            let parsed: Vec<i32> = input
+            let shared: Vec<i32> = input
                 .lines()
                 .filter_map(|line| line.trim().parse().ok())
                 .collect();
-            Ok(Box::new(aoc_solver::SolverInstance::<PluginDay1>::new(
-                2022, 1, parsed,
+            Ok(Box::new(aoc_solver::SolverInstanceCow::<PluginDay1>::new(
+                2022,
+                1,
+                Cow::Owned(shared),
             )))
         })
         .expect("Failed to register manual solver")

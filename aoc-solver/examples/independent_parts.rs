@@ -5,9 +5,8 @@
 //!
 //! Run with: cargo run --example independent_parts
 
-use aoc_solver::{
-    AutoRegisterSolver, ParseError, PartResult, RegistryBuilder, SolveError, Solver,
-};
+use aoc_solver::{AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver};
+use std::borrow::Cow;
 
 /// Example solver that processes lines of integers
 ///
@@ -18,43 +17,34 @@ use aoc_solver::{
 pub struct ExampleIndependent;
 
 impl Solver for ExampleIndependent {
-    type Parsed = Vec<i32>;
-    type PartialResult = (); // No data shared between parts
-    
-    fn parse(input: &str) -> Result<Self::Parsed, ParseError> {
+    type SharedData = Vec<i32>;
+
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
-                line.trim()
-                    .parse::<i32>()
-                    .map_err(|_| ParseError::InvalidFormat(
-                        format!("Expected integer, got: {}", line)
-                    ))
+                line.trim().parse::<i32>().map_err(|_| {
+                    ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
+                })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(|v| Cow::Owned(v))
     }
-    
+
     fn solve_part(
-        parsed: &Self::Parsed,
+        shared: &mut Cow<'_, Self::SharedData>,
         part: usize,
-        _previous_partial: Option<&Self::PartialResult>,
-    ) -> Result<PartResult<Self::PartialResult>, SolveError> {
+    ) -> Result<String, SolveError> {
         match part {
             1 => {
-                // Part 1: Sum all numbers
-                let sum: i32 = parsed.iter().sum();
-                Ok(PartResult {
-                    answer: sum.to_string(),
-                    partial: None, // No data to share
-                })
+                // Part 1: Sum all numbers (read-only, no need to call to_mut())
+                let sum: i32 = shared.iter().sum();
+                Ok(sum.to_string())
             }
             2 => {
-                // Part 2: Product of all numbers
-                let product: i32 = parsed.iter().product();
-                Ok(PartResult {
-                    answer: product.to_string(),
-                    partial: None, // No data to share
-                })
+                // Part 2: Product of all numbers (read-only, no need to call to_mut())
+                let product: i32 = shared.iter().product();
+                Ok(product.to_string())
             }
             _ => Err(SolveError::PartNotImplemented(part)),
         }
@@ -63,32 +53,30 @@ impl Solver for ExampleIndependent {
 
 fn main() {
     println!("=== Independent Parts Example ===\n");
-    
+
     // Use the plugin system with automatic registration via derive macro
     let registry = RegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();
-    
+
     let input = "1\n2\n3\n4\n5";
     println!("Input: {}", input.replace('\n', ", "));
-    
-    let mut solver = registry.create_solver(2023, 1, input)
+
+    let mut solver = registry
+        .create_solver(2023, 1, input)
         .expect("Failed to create solver");
-    
+
     match solver.solve(1) {
         Ok(answer) => println!("Part 1 (Sum): {}", answer),
         Err(e) => eprintln!("Error solving part 1: {}", e),
     }
-    
+
     match solver.solve(2) {
         Ok(answer) => println!("Part 2 (Product): {}", answer),
         Err(e) => eprintln!("Error solving part 2: {}", e),
     }
-    
-    println!("Cached results: {:?}", solver.results());
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -97,15 +85,15 @@ mod tests {
     #[test]
     fn test_parse_valid_input() {
         let input = "1\n2\n3\n4\n5";
-        let parsed = ExampleIndependent::parse(input).unwrap();
-        assert_eq!(parsed, vec![1, 2, 3, 4, 5]);
+        let shared = ExampleIndependent::parse(input).unwrap();
+        assert_eq!(*shared, vec![1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn test_parse_with_whitespace() {
         let input = "  1  \n  2  \n  3  ";
-        let parsed = ExampleIndependent::parse(input).unwrap();
-        assert_eq!(parsed, vec![1, 2, 3]);
+        let shared = ExampleIndependent::parse(input).unwrap();
+        assert_eq!(*shared, vec![1, 2, 3]);
     }
 
     #[test]
@@ -117,24 +105,22 @@ mod tests {
 
     #[test]
     fn test_part1_sum() {
-        let parsed = vec![1, 2, 3, 4, 5];
-        let result = ExampleIndependent::solve_part(&parsed, 1, None).unwrap();
-        assert_eq!(result.answer, "15");
-        assert!(result.partial.is_none());
+        let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
+        let result = ExampleIndependent::solve_part(&mut shared, 1).unwrap();
+        assert_eq!(result, "15");
     }
 
     #[test]
     fn test_part2_product() {
-        let parsed = vec![1, 2, 3, 4, 5];
-        let result = ExampleIndependent::solve_part(&parsed, 2, None).unwrap();
-        assert_eq!(result.answer, "120");
-        assert!(result.partial.is_none());
+        let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
+        let result = ExampleIndependent::solve_part(&mut shared, 2).unwrap();
+        assert_eq!(result, "120");
     }
 
     #[test]
     fn test_invalid_part() {
-        let parsed = vec![1, 2, 3];
-        let result = ExampleIndependent::solve_part(&parsed, 3, None);
+        let mut shared = Cow::Owned(vec![1, 2, 3]);
+        let result = ExampleIndependent::solve_part(&mut shared, 3);
         assert!(result.is_err());
         assert!(matches!(result, Err(SolveError::PartNotImplemented(3))));
     }

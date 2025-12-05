@@ -27,10 +27,10 @@
 - [x] 3. Implement impl block parsing
   - Parse ItemImpl from input TokenStream
   - Extract struct name from impl block
-  - Extract type definitions (Parsed, PartialResult)
+  - Extract type definition (SharedData)
   - Extract parse function
   - Extract part functions (part1, part2, etc.)
-  - _Requirements: 1.2, 2.1, 2.2, 3.1_
+  - _Requirements: 1.2, 2.1, 3.1_
 
 - [ ]* 3.1 Write unit tests for impl block parsing
   - Test type extraction works correctly
@@ -39,14 +39,13 @@
   - _Requirements: 2.1, 2.2, 3.1_
 
 - [x] 4. Implement validation logic
-  - Validate Parsed type exists
-  - Validate PartialResult type exists
+  - Validate SharedData type exists
   - Validate parse function exists
   - Validate part1 exists
   - Validate all parts from 1 to max_parts exist
   - Validate no parts exceed max_parts
   - Generate appropriate compile_error! messages for each failure
-  - _Requirements: 2.3, 3.2, 5.1, 5.3, 5.4, 8.1_
+  - _Requirements: 2.2, 3.2, 5.1, 5.3, 5.4, 8.1_
 
 - [ ]* 4.1 Write property test for validation completeness
   - **Property 6: Part validation enforces completeness**
@@ -57,19 +56,16 @@
   - Run 10 iterations
 
 - [x] 5. Implement part function signature analysis
-  - Detect parameter count (1 for independent, 2 for dependent)
-  - Extract parameter types
-  - Detect return type (String, Result<String>, PartResult, Result<PartResult>)
+  - Validate parameter is `&mut SharedData`
+  - Detect return type (String, Result<String>)
   - Validate return types are supported
   - Generate compile_error! for unsupported return types
-  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 6.1, 7.1, 8.3_
+  - _Requirements: 4.1, 4.2, 4.3, 6.1, 8.3_
 
 - [ ]* 5.1 Write property test for return type detection
-  - **Property 2: String returns are wrapped correctly**
-  - **Property 3: Result returns are unwrapped and wrapped**
-  - **Property 4: PartResult returns are passed through**
-  - **Property 5: Result<PartResult> returns are passed through**
-  - **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 6.2**
+  - **Property 2: String returns are passed through correctly**
+  - **Property 3: Result returns are passed through correctly**
+  - **Validates: Requirements 4.1, 4.2**
   - Generate different return type patterns
   - Verify correct detection and handling
   - Run 10 iterations
@@ -90,11 +86,11 @@
 
 - [x] 7. Implement Solver trait code generation
   - Generate impl Solver for StructName block
-  - Forward Parsed and PartialResult types
+  - Forward SharedData type
   - Generate parse method that calls user's parse function
   - Generate solve_part method with match statement
   - Use fully qualified paths (::aoc_solver::)
-  - _Requirements: 1.1, 1.2, 1.3, 10.1, 10.2_
+  - _Requirements: 1.1, 1.2, 1.3, 10.1_
 
 - [ ]* 7.1 Write property test for type forwarding
   - **Property 1: Type forwarding preserves user types**
@@ -120,9 +116,8 @@
   - _Requirements: 1.3, 6.1, 7.1, 11.1, 11.2_
 
 - [ ]* 8.1 Write property test for part dispatch
-  - **Property 7: Independent parts receive only parsed data**
-  - **Property 8: Dependent parts receive previous partial**
-  - **Property 12: Valid parts dispatch correctly**
+  - **Property 7: All parts receive mutable shared data**
+  - **Property 10: Valid parts dispatch correctly**
   - **Property 13: Out-of-range parts return error**
   - **Validates: Requirements 6.1, 7.1, 11.1, 11.2**
   - Generate different part configurations
@@ -137,10 +132,8 @@
   - Run 10 iterations
 
 - [x] 9. Implement return value wrapping logic
-  - For String: wrap in PartResult { answer, partial: None }
-  - For Result<String, E>: unwrap with ? then wrap
-  - For PartResult<T>: use directly
-  - For Result<PartResult<T>, E>: use directly
+  - For String: return directly as Ok(String)
+  - For Result<String, E>: return directly
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 6.2_
 
 - [x] 10. Create integration test for independent parts
@@ -164,8 +157,7 @@
 
 - [ ] 13. Create compile-fail tests using trybuild
   - Test missing max_parts attribute
-  - Test missing Parsed type
-  - Test missing PartialResult type
+  - Test missing SharedData type
   - Test missing parse function
   - Test missing part1
   - Test gaps in part numbers

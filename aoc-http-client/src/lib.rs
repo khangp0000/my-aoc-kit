@@ -47,9 +47,9 @@
 //! # }
 //! ```
 
-mod error;
 mod client;
+mod error;
 mod parser;
 
-pub use error::AocError;
 pub use client::{AocClient, AocClientBuilder, SessionInfo, SubmissionResult};
+pub use error::AocError;
