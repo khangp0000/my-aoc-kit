@@ -84,6 +84,195 @@ fn main() {
 }
 ```
 
+## Simplified Solver Implementation with `#[aoc_solver]`
+
+The `#[aoc_solver]` attribute macro dramatically simplifies solver implementation by automatically generating the `Solver` trait implementation. Instead of manually implementing the trait with match statements, you just define types and part functions.
+
+### Basic Usage
+
+```rust
+use aoc_solver::{ParseError, SolveError};
+use aoc_solver_macros::aoc_solver;
+
+struct Day1;  // Define the struct
+
+#[aoc_solver(max_parts = 2)]
+impl Day1 {
+    type Parsed = Vec<i32>;
+    type PartialResult = ();
+    
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
+        input.lines()
+            .map(|line| line.parse().map_err(|_| 
+                ParseError::InvalidFormat("Expected integer".into())))
+            .collect()
+    }
+    
+    fn part1(parsed: &Vec<i32>) -> String {
+        parsed.iter().sum::<i32>().to_string()
+    }
+    
+    fn part2(parsed: &Vec<i32>) -> String {
+        parsed.iter().product::<i32>().to_string()
+    }
+}
+```
+
+The macro generates:
+- The complete `Solver` trait implementation
+- Proper return value wrapping
+- Error handling for out-of-range parts
+
+### Flexible Return Types
+
+Part functions support multiple return types:
+
+```rust
+struct Day2;
+
+#[aoc_solver(max_parts = 3)]
+impl Day2 {
+    type Parsed = Vec<i32>;
+    type PartialResult = ();
+    
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+    
+    // Simple string return
+    fn part1(parsed: &Vec<i32>) -> String {
+        "42".to_string()
+    }
+    
+    // Result for error handling
+    fn part2(parsed: &Vec<i32>) -> Result<String, SolveError> {
+        Ok("answer".to_string())
+    }
+    
+    // Full control with PartResult
+    fn part3(parsed: &Vec<i32>) -> PartResult<()> {
+        PartResult {
+            answer: "answer".to_string(),
+            partial: None,
+        }
+    }
+}
+```
+
+### Dependent Parts
+
+For parts that share data, use `PartResult` and add a `prev` parameter:
+
+```rust
+use aoc_solver::PartResult;
+
+#[derive(Clone)]
+struct SumCount {
+    sum: i32,
+    count: usize,
+}
+
+struct Day3;
+
+#[aoc_solver(max_parts = 2)]
+impl Day3 {
+    type Parsed = Vec<i32>;
+    type PartialResult = SumCount;
+    
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+    
+    // Part 1 returns data for Part 2
+    fn part1(parsed: &Vec<i32>) -> PartResult<SumCount> {
+        let sum: i32 = parsed.iter().sum();
+        PartResult {
+            answer: sum.to_string(),
+            partial: Some(SumCount { sum, count: parsed.len() }),
+        }
+    }
+    
+    // Part 2 receives Part 1's data
+    fn part2(parsed: &Vec<i32>, prev: Option<&SumCount>) -> String {
+        if let Some(data) = prev {
+            let avg = data.sum as f64 / data.count as f64;
+            format!("{:.2}", avg)
+        } else {
+            // Can still compute independently
+            let sum: i32 = parsed.iter().sum();
+            let avg = sum as f64 / parsed.len() as f64;
+            format!("{:.2}", avg)
+        }
+    }
+}
+```
+
+### Combining with Plugin System
+
+To use `#[aoc_solver]` with automatic registration, combine with `AutoRegisterSolver`:
+
+```rust
+use aoc_solver::AutoRegisterSolver;
+use aoc_solver_macros::aoc_solver;
+
+#[derive(AutoRegisterSolver)]
+#[aoc(year = 2023, day = 1, tags = ["example"])]
+struct Day1;
+
+#[aoc_solver(max_parts = 2)]
+impl Day1 {
+    type Parsed = Vec<i32>;
+    type PartialResult = ();
+    
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+    fn part1(parsed: &Vec<i32>) -> String { /* ... */ }
+    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
+}
+
+// Now it can be discovered automatically
+let registry = RegistryBuilder::new()
+    .register_all_plugins()
+    .unwrap()
+    .build();
+```
+
+**Note**: Now that users define the struct separately, you can easily combine `#[derive(AutoRegisterSolver)]` with `#[aoc_solver]`!
+
+### Compile-Time Validation
+
+The macro provides helpful compile-time errors:
+
+```rust
+// Missing max_parts
+#[aoc_solver]  // Error: missing required attribute 'max_parts'
+impl Day1 { /* ... */ }
+
+// Missing required types
+#[aoc_solver(max_parts = 2)]
+impl Day1 {
+    // Error: missing required type 'Parsed'
+    // Error: missing required type 'PartialResult'
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+}
+
+// Missing part1
+#[aoc_solver(max_parts = 2)]
+impl Day1 {
+    type Parsed = Vec<i32>;
+    type PartialResult = ();
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+    // Error: at least 'part1' function is required
+    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
+}
+
+// Part exceeds max_parts
+#[aoc_solver(max_parts = 2)]
+impl Day1 {
+    type Parsed = Vec<i32>;
+    type PartialResult = ();
+    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
+    fn part1(parsed: &Vec<i32>) -> String { /* ... */ }
+    fn part2(parsed: &Vec<i32>) -> String { /* ... */ }
+    fn part3(parsed: &Vec<i32>) -> String { /* ... */ }  // Error: part3 exceeds max_parts = 2
+}
+```
+
 ## Plugin System (Automatic Registration)
 
 The library supports automatic solver discovery using the `inventory` crate. This eliminates manual registration boilerplate and enables flexible filtering.
@@ -338,6 +527,7 @@ The library uses `Result` types for all fallible operations:
   
 - `SolveError`: Part solving failures
   - `PartNotImplemented(usize)`: The requested part is not implemented
+  - `PartOutOfRange(usize)`: The requested part number exceeds max_parts (used by `#[aoc_solver]` macro)
   - `SolveFailed(Box<dyn Error + Send + Sync>)`: Custom error from solver logic
   
 - `SolverError`: Registry operations

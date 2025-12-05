@@ -22,6 +22,9 @@ pub enum SolveError {
     /// The requested part number is not implemented
     #[error("Part {0} is not implemented")]
     PartNotImplemented(usize),
+    /// The requested part number is out of range (exceeds max_parts)
+    #[error("Part {0} is out of range")]
+    PartOutOfRange(usize),
     /// An error occurred while solving the part
     #[error("Solve failed: {0}")]
     SolveFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
