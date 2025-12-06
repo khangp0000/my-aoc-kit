@@ -6,7 +6,7 @@
 //! Run with: cargo run --example plugin_system
 
 use aoc_solver::{
-    AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver, SolverPlugin,
+    AocParser, AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver, SolverPlugin,
 };
 use std::borrow::Cow;
 
@@ -19,9 +19,8 @@ use std::borrow::Cow;
 #[aoc(year = 2023, day = 1, tags = ["easy", "2023"])]
 pub struct PluginDay1;
 
-impl Solver for PluginDay1 {
+impl AocParser for PluginDay1 {
     type SharedData = Vec<i32>;
-    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -34,6 +33,10 @@ impl Solver for PluginDay1 {
             .collect::<Result<Vec<_>, _>>()
             .map(Cow::Owned)
     }
+}
+
+impl Solver for PluginDay1 {
+    const PARTS: u8 = 1;
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
@@ -53,9 +56,8 @@ impl Solver for PluginDay1 {
 
 pub struct PluginDay2;
 
-impl Solver for PluginDay2 {
+impl AocParser for PluginDay2 {
     type SharedData = Vec<i32>;
-    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -68,6 +70,10 @@ impl Solver for PluginDay2 {
             .collect::<Result<Vec<_>, _>>()
             .map(Cow::Owned)
     }
+}
+
+impl Solver for PluginDay2 {
+    const PARTS: u8 = 1;
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
@@ -97,9 +103,8 @@ inventory::submit! {
 
 pub struct PluginDay3;
 
-impl Solver for PluginDay3 {
+impl AocParser for PluginDay3 {
     type SharedData = Vec<i32>;
-    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -112,6 +117,10 @@ impl Solver for PluginDay3 {
             .collect::<Result<Vec<_>, _>>()
             .map(Cow::Owned)
     }
+}
+
+impl Solver for PluginDay3 {
+    const PARTS: u8 = 1;
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
@@ -145,9 +154,8 @@ inventory::submit! {
 #[aoc(year = 2024, day = 4, tags = ["derive", "easy"])]
 pub struct PluginDay4Derive;
 
-impl Solver for PluginDay4Derive {
+impl AocParser for PluginDay4Derive {
     type SharedData = Vec<i32>;
-    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -160,6 +168,10 @@ impl Solver for PluginDay4Derive {
             .collect::<Result<Vec<_>, _>>()
             .map(Cow::Owned)
     }
+}
+
+impl Solver for PluginDay4Derive {
+    const PARTS: u8 = 1;
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,

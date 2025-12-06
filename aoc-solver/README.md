@@ -5,39 +5,231 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 ## Features
 
 - **Type-safe solver interface**: Each solver defines its own shared data type
+- **Trait-based design**: Separate `AocParser` and `PartSolver<N>` traits for clean separation of concerns
+- **Compile-time part validation**: Const generics ensure all required parts are implemented
 - **Flexible part dependencies**: Parts can share data through mutations to shared state
 - **Builder pattern**: Fluent API for registry construction with compile-time immutability guarantees
 - **Plugin system**: Automatic solver discovery and registration using the `inventory` crate
-- **Derive macro**: Zero-boilerplate solver registration with `#[derive(AutoRegisterSolver)]`
-- **Flexible filtering**: Register solvers by tags, year, or custom predicates
-- **Extensible**: Add new solvers without modifying the core library
+- **Derive macros**: Zero-boilerplate with `#[derive(AocSolver)]` and `#[derive(AutoRegisterSolver)]`
+- **Zero-copy support**: `Cow<SharedData>` enables efficient memory usage
 
 ## Quick Start
 
-### 1. Define a Solver
+### Using the Derive Macro (Recommended)
+
+The easiest way to create a solver is using `AocParser`, `PartSolver<N>`, and `#[derive(AocSolver)]`:
+
+```rust
+use std::borrow::Cow;
+use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError};
+
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
+struct Day1;
+
+impl AocParser for Day1 {
+    type SharedData = Vec<i32>;
+
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        input
+            .lines()
+            .map(|line| {
+                line.parse()
+                    .map_err(|_| ParseError::InvalidFormat("Expected integer".into()))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
+    }
+}
+
+impl PartSolver<1> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().sum::<i32>().to_string())
+    }
+}
+
+impl PartSolver<2> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().product::<i32>().to_string())
+    }
+}
+```
+
+### Register and Use
+
+```rust
+use aoc_solver::{RegistryBuilder, Solver, SolverInstanceCow};
+
+fn main() {
+    let registry = RegistryBuilder::new()
+        .register(2023, 1, |input: &str| {
+            let shared = Day1::parse(input)?;
+            Ok(Box::new(SolverInstanceCow::<Day1>::new(2023, 1, shared)))
+        })
+        .unwrap()
+        .build();
+
+    let input = "1\n2\n3\n4\n5";
+    let mut solver = registry.create_solver(2023, 1, input).unwrap();
+
+    println!("Part 1: {}", solver.solve(1).unwrap()); // Part 1: 15
+    println!("Part 2: {}", solver.solve(2).unwrap()); // Part 2: 120
+}
+```
+
+## Trait-Based Design
+
+### AocParser Trait
+
+Defines the shared data type and parsing logic:
+
+```rust
+pub trait AocParser {
+    type SharedData: ToOwned + Clone;
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError>;
+}
+```
+
+### PartSolver<N> Trait
+
+Defines the solving logic for each part using const generics:
+
+```rust
+pub trait PartSolver<const N: u8>: AocParser {
+    fn solve(shared: &mut Cow<'_, Self::SharedData>) -> Result<String, SolveError>;
+}
+```
+
+### AocSolver Derive Macro
+
+Generates the `Solver` trait implementation from `AocParser` + `PartSolver<N>`:
+
+```rust
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]  // Requires PartSolver<1> and PartSolver<2>
+struct Day1;
+```
+
+**Compile-time checks:**
+- If `PartSolver<1>` is not implemented, compilation fails with a clear error
+- If `PartSolver<2>` is not implemented but `max_parts = 2`, compilation fails
+
+## Dependent Parts
+
+For problems where Part 2 depends on Part 1's computation:
+
+```rust
+#[derive(Debug, Clone)]
+struct SharedData {
+    numbers: Vec<i32>,
+    sum: Option<i32>,
+    count: Option<usize>,
+}
+
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
+struct Day5;
+
+impl AocParser for Day5 {
+    type SharedData = SharedData;
+
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        let numbers: Vec<i32> = input
+            .lines()
+            .map(|line| line.parse().map_err(|_| ParseError::InvalidFormat("bad".into())))
+            .collect::<Result<_, _>>()?;
+        Ok(Cow::Owned(SharedData { numbers, sum: None, count: None }))
+    }
+}
+
+impl PartSolver<1> for Day5 {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+        // Need to mutate - call to_mut() to get owned data
+        let data = shared.to_mut();
+        let sum: i32 = data.numbers.iter().sum();
+        data.sum = Some(sum);
+        data.count = Some(data.numbers.len());
+        Ok(sum.to_string())
+    }
+}
+
+impl PartSolver<2> for Day5 {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+        // Read-only - use cached value if available
+        let sum = shared.sum.unwrap_or_else(|| shared.numbers.iter().sum());
+        let count = shared.count.unwrap_or_else(|| shared.numbers.len());
+        let avg = if count > 0 { sum as f64 / count as f64 } else { 0.0 };
+        Ok(format!("{:.2}", avg))
+    }
+}
+```
+
+## Plugin System (Automatic Registration)
+
+Combine `#[derive(AocSolver)]` with `#[derive(AutoRegisterSolver)]` for automatic discovery:
+
+```rust
+use aoc_solver::{AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError};
+
+#[derive(AocSolver, AutoRegisterSolver)]
+#[aoc_solver(max_parts = 2)]
+#[aoc(year = 2023, day = 1, tags = ["easy"])]
+struct Day1;
+
+impl AocParser for Day1 { /* ... */ }
+impl PartSolver<1> for Day1 { /* ... */ }
+impl PartSolver<2> for Day1 { /* ... */ }
+
+// Discover and use all registered solvers
+fn main() {
+    let registry = RegistryBuilder::new()
+        .register_all_plugins()
+        .unwrap()
+        .build();
+
+    let mut solver = registry.create_solver(2023, 1, "1\n2\n3").unwrap();
+    println!("Part 1: {}", solver.solve(1).unwrap());
+}
+```
+
+### Filtering Plugins
+
+```rust
+// Register only solvers with specific tags
+let registry = RegistryBuilder::new()
+    .register_solver_plugins(|plugin| plugin.tags.contains(&"easy"))
+    .unwrap()
+    .build();
+
+// Register only 2023 solvers
+let registry = RegistryBuilder::new()
+    .register_solver_plugins(|plugin| plugin.year == 2023)
+    .unwrap()
+    .build();
+```
+
+## Manual Solver Implementation
+
+You can also implement the `Solver` trait directly without macros:
 
 ```rust
 use std::borrow::Cow;
 use aoc_solver::{Solver, ParseError, SolveError};
 
-pub struct Day1Solver;
+struct Day1;
 
-impl Solver for Day1Solver {
+impl Solver for Day1 {
     type SharedData = Vec<i32>;
     const PARTS: u8 = 2;
-    
+
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input.lines()
-            .map(|line| line.parse().map_err(|_| 
-                ParseError::InvalidFormat("Expected integer".to_string())))
+            .map(|line| line.parse().map_err(|_| ParseError::InvalidFormat("bad".into())))
             .collect::<Result<Vec<_>, _>>()
             .map(Cow::Owned)
     }
-    
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
+
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
             2 => Ok(shared.iter().product::<i32>().to_string()),
@@ -47,453 +239,40 @@ impl Solver for Day1Solver {
 }
 ```
 
-### 2. Register and Use (Builder Pattern)
-
-```rust
-use aoc_solver::{RegistryBuilder, register_solver};
-
-fn main() {
-    // Use the builder pattern for registry construction
-    let mut builder = RegistryBuilder::new();
-    register_solver!(builder, Day1Solver, 2023, 1);
-    let registry = builder.build();  // Registry is now immutable
-    
-    let input = "1\n2\n3\n4\n5";
-    let mut solver = registry.create_solver(2023, 1, input).unwrap();
-    
-    // Solve parts
-    match solver.solve(1) {
-        Ok(answer) => println!("Part 1: {}", answer),  // Part 1: 15
-        Err(e) => eprintln!("Error: {}", e),
-    }
-    
-    match solver.solve(2) {
-        Ok(answer) => println!("Part 2: {}", answer),  // Part 2: 120
-        Err(e) => eprintln!("Error: {}", e),
-    }
-}
-```
-
-## Simplified Solver Implementation with `#[aoc_solver]`
-
-The `#[aoc_solver]` attribute macro dramatically simplifies solver implementation by automatically generating the `Solver` trait implementation. Instead of manually implementing the trait with match statements, you just define types and part functions.
-
-### Basic Usage
-
-```rust
-use aoc_solver::{ParseError, SolveError};
-use aoc_solver_macros::aoc_solver;
-
-struct Day1;  // Define the struct
-
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
-    type SharedData = Vec<i32>;
-    
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
-        input.lines()
-            .map(|line| line.parse().map_err(|_| 
-                ParseError::InvalidFormat("Expected integer".into())))
-            .collect()
-    }
-    
-    fn part1(shared: &mut Vec<i32>) -> String {
-        shared.iter().sum::<i32>().to_string()
-    }
-    
-    fn part2(shared: &mut Vec<i32>) -> String {
-        shared.iter().product::<i32>().to_string()
-    }
-}
-```
-
-The macro generates:
-- The complete `Solver` trait implementation
-- Proper return value wrapping
-- Error handling for out-of-range parts
-
-### Flexible Return Types
-
-Part functions support two return types:
-
-```rust
-struct Day2;
-
-#[aoc_solver(max_parts = 2)]
-impl Day2 {
-    type SharedData = Vec<i32>;
-    
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    
-    // Simple string return
-    fn part1(shared: &mut Vec<i32>) -> String {
-        "42".to_string()
-    }
-    
-    // Result for error handling
-    fn part2(shared: &mut Vec<i32>) -> Result<String, SolveError> {
-        if shared.is_empty() {
-            Err(SolveError::SolveFailed("Empty input".into()))
-        } else {
-            Ok("answer".to_string())
-        }
-    }
-}
-```
-
-### Dependent Parts
-
-For parts that share data, use mutable access to SharedData:
-
-```rust
-#[derive(Debug)]
-struct SharedData {
-    numbers: Vec<i32>,
-    sum: Option<i32>,
-    count: Option<usize>,
-}
-
-struct Day3;
-
-#[aoc_solver(max_parts = 2)]
-impl Day3 {
-    type SharedData = SharedData;
-    
-    fn parse(input: &str) -> Result<SharedData, ParseError> {
-        let numbers: Vec<i32> = input.lines()
-            .map(|line| line.parse().map_err(|_| 
-                ParseError::InvalidFormat("Expected integer".into())))
-            .collect::<Result<Vec<_>, _>>()?;
-        
-        Ok(SharedData {
-            numbers,
-            sum: None,
-            count: None,
-        })
-    }
-    
-    // Part 1 stores data for Part 2
-    fn part1(shared: &mut SharedData) -> String {
-        let sum: i32 = shared.numbers.iter().sum();
-        let count = shared.numbers.len();
-        
-        // Store for Part 2
-        shared.sum = Some(sum);
-        shared.count = Some(count);
-        
-        sum.to_string()
-    }
-    
-    // Part 2 uses Part 1's data if available
-    fn part2(shared: &mut SharedData) -> String {
-        let (sum, count) = if let (Some(s), Some(c)) = (shared.sum, shared.count) {
-            (s, c)  // Use Part 1's data
-        } else {
-            // Compute independently if Part 1 wasn't run
-            (shared.numbers.iter().sum(), shared.numbers.len())
-        };
-        
-        let avg = if count > 0 {
-            sum as f64 / count as f64
-        } else {
-            0.0
-        };
-        format!("{:.2}", avg)
-    }
-}
-```
-
-### Combining with Plugin System
-
-To use `#[aoc_solver]` with automatic registration, combine with `AutoRegisterSolver`:
-
-```rust
-use aoc_solver::AutoRegisterSolver;
-use aoc_solver_macros::aoc_solver;
-
-#[derive(AutoRegisterSolver)]
-#[aoc(year = 2023, day = 1, tags = ["example"])]
-struct Day1;
-
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
-    type SharedData = Vec<i32>;
-    
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    fn part1(shared: &mut Vec<i32>) -> String { /* ... */ }
-    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
-}
-
-// Now it can be discovered automatically
-let registry = RegistryBuilder::new()
-    .register_all_plugins()
-    .unwrap()
-    .build();
-```
-
-### Compile-Time Validation
-
-The macro provides helpful compile-time errors:
-
-```rust
-// Missing max_parts
-#[aoc_solver]  // Error: missing required attribute 'max_parts'
-impl Day1 { /* ... */ }
-
-// Missing required type
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
-    // Error: missing required type 'SharedData'
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-}
-
-// Missing part1
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
-    type SharedData = Vec<i32>;
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    // Error: at least 'part1' function is required
-    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
-}
-
-// Part exceeds max_parts
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
-    type SharedData = Vec<i32>;
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> { /* ... */ }
-    fn part1(shared: &mut Vec<i32>) -> String { /* ... */ }
-    fn part2(shared: &mut Vec<i32>) -> String { /* ... */ }
-    fn part3(shared: &mut Vec<i32>) -> String { /* ... */ }  // Error: part3 exceeds max_parts = 2
-}
-```
-
-## Plugin System (Automatic Registration)
-
-The library supports automatic solver discovery using the `inventory` crate. This eliminates manual registration boilerplate and enables flexible filtering.
-
-### Using the Derive Macro (Recommended)
-
-The easiest way to register a solver is using the `#[derive(AutoRegisterSolver)]` macro:
-
-```rust
-use std::borrow::Cow;
-use aoc_solver::{AutoRegisterSolver, Solver, ParseError, SolveError};
-
-#[derive(AutoRegisterSolver)]
-#[aoc(year = 2023, day = 1, tags = ["easy", "2023"])]
-pub struct Day1Solver;
-
-impl Solver for Day1Solver {
-    type SharedData = Vec<i32>;
-    const PARTS: u8 = 1;
-    
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-        input.lines()
-            .map(|line| line.parse().map_err(|_| 
-                ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
-    }
-    
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
-        match part {
-            1 => Ok(shared.iter().sum::<i32>().to_string()),
-            _ => Err(SolveError::PartNotImplemented(part)),
-        }
-    }
-}
-
-// That's it! No manual registration needed.
-```
-
-### Using Plugins
-
-```rust
-use aoc_solver::RegistryBuilder;
-
-fn main() {
-    // Register ALL discovered plugins
-    let registry = RegistryBuilder::new()
-        .register_all_plugins()
-        .unwrap()
-        .build();
-    
-    // Or register only specific plugins by tag
-    let registry = RegistryBuilder::new()
-        .register_solver_plugins(|plugin| plugin.tags.contains(&"easy"))
-        .unwrap()
-        .build();
-    
-    // Or register only 2023 solvers
-    let registry = RegistryBuilder::new()
-        .register_solver_plugins(|plugin| plugin.year == 2023)
-        .unwrap()
-        .build();
-}
-```
-
-## Advanced: Dependent Parts
-
-For problems where Part 2 depends on Part 1's computation, use mutable access to shared data via `Cow::to_mut()`:
-
-```rust
-use std::borrow::Cow;
-use aoc_solver::{Solver, ParseError, SolveError};
-
-#[derive(Debug, Clone)]
-pub struct SharedData {
-    numbers: Vec<i32>,
-    sum: Option<i32>,
-    count: Option<usize>,
-}
-
-pub struct Day5Solver;
-
-impl Solver for Day5Solver {
-    type SharedData = SharedData;
-    const PARTS: u8 = 2;
-    
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-        let numbers: Vec<i32> = input.lines()
-            .map(|line| line.parse().map_err(|_| 
-                ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect::<Result<Vec<_>, _>>()?;
-        
-        Ok(Cow::Owned(SharedData {
-            numbers,
-            sum: None,
-            count: None,
-        }))
-    }
-    
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
-        match part {
-            1 => {
-                // Need to mutate, so call to_mut() to get owned data
-                let data = shared.to_mut();
-                let sum: i32 = data.numbers.iter().sum();
-                let count = data.numbers.len();
-                
-                // Store for Part 2
-                data.sum = Some(sum);
-                data.count = Some(count);
-                
-                Ok(sum.to_string())
-            }
-            2 => {
-                // Read-only access - no need to call to_mut()
-                let (sum, count) = if let (Some(s), Some(c)) = (shared.sum, shared.count) {
-                    (s, c)  // Use Part 1's data
-                } else {
-                    // Compute independently
-                    (shared.numbers.iter().sum(), shared.numbers.len())
-                };
-                
-                let average = if count > 0 {
-                    sum as f64 / count as f64
-                } else {
-                    0.0
-                };
-                Ok(format!("{:.2}", average))
-            }
-            _ => Err(SolveError::PartNotImplemented(part)),
-        }
-    }
-}
-```
-
 ## Key Concepts
-
-### Solver Trait
-
-The `Solver` trait is the core interface that all problem solvers implement:
-
-- `SharedData`: The data structure holding parsed input and intermediate results (must implement `ToOwned`)
-- `PARTS`: A `const u8` declaring how many parts this solver supports
-- `parse()`: Transforms raw input into `Cow<SharedData>` for zero-copy support
-- `solve_part()`: Solves a specific part with mutable access to `Cow<SharedData>`
-
-### DynSolver Trait
-
-The `DynSolver` trait provides a type-erased interface for working with any solver:
-
-- `solve(part)`: Computes the solution for a specific part (with automatic range validation)
-- `parts()`: Get the number of parts this solver supports
-- `year()` and `day()`: Get the solver's year and day
 
 ### Zero-Copy Design
 
 The library uses `Cow<SharedData>` to enable zero-copy parsing:
 - Read-only operations work directly with borrowed data
 - Call `.to_mut()` only when mutation is needed (triggers clone if borrowed)
-- Each solver controls its own memory strategy
 
 ### RegistryBuilder and SolverRegistry
 
-The builder pattern ensures type-safe registry construction:
-
 **RegistryBuilder** (mutable, for construction):
-- `new()`: Create a new builder
-- `register()`: Add a solver factory (returns `Result<Self, RegistrationError>`)
+- `register()`: Add a solver factory
 - `register_all_plugins()`: Register all discovered plugins
 - `register_solver_plugins(filter)`: Register plugins matching a predicate
 - `build()`: Finalize into an immutable `SolverRegistry`
 
 **SolverRegistry** (immutable, for usage):
 - `create_solver()`: Create a solver instance with input
-- Cannot be modified after construction (compile-time guarantee)
 
 ## Examples
 
-The `examples/` directory contains complete working examples:
-
 ```bash
-# Run the independent parts example
 cargo run --example independent_parts
-
-# Run the dependent parts example
 cargo run --example dependent_parts
-
-# Run the plugin system example
+cargo run --example macro_usage
 cargo run --example plugin_system
-
-# Run tests for the examples
-cargo test --examples
 ```
-
-- `independent_parts.rs`: Independent parts (sum and product)
-- `dependent_parts.rs`: Dependent parts (sum/count and average)
-- `plugin_system.rs`: Plugin system with automatic registration and filtering
 
 ## Error Handling
 
-The library uses `Result` types for all fallible operations:
-
 - `ParseError`: Input parsing failures
-  - `InvalidFormat`: Input doesn't match expected structure
-  - `MissingData`: Required data is absent
-  - `Other`: Other parsing issues
-  
-- `SolveError`: Part solving failures
-  - `PartNotImplemented(u8)`: The requested part is not implemented
-  - `PartOutOfRange(u8)`: The requested part exceeds the solver's PARTS
-  - `SolveFailed(String)`: Custom error from solver logic
-  
-- `SolverError`: Registry operations
-  - `NotFound(year, day)`: Solver not found for the given year-day
-  - `ParseError`: Wraps parsing errors
-  - `SolveError`: Wraps solving errors
-
-- `RegistrationError`: Builder operations
-  - `DuplicateSolver(year, day)`: Attempted to register duplicate solver
-
-All errors implement `std::error::Error` for easy integration.
+- `SolveError`: Part solving failures (`PartNotImplemented`, `PartOutOfRange`, `SolveFailed`)
+- `SolverError`: Registry operations (`NotFound`, wraps parse/solve errors)
+- `RegistrationError`: Duplicate solver registration
 
 ## License
 

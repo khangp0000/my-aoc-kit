@@ -2,20 +2,23 @@
 //!
 //! **Feature: solver-part-bounds**
 
-use aoc_solver::{ParseError, SolveError, Solver, SolverExt};
+use aoc_solver::{AocParser, ParseError, SolveError, Solver, SolverExt};
 use proptest::prelude::*;
 use std::borrow::Cow;
 
 /// Test solver with configurable PARTS
 struct TestSolver<const N: u8>;
 
-impl<const N: u8> Solver for TestSolver<N> {
+impl<const N: u8> AocParser for TestSolver<N> {
     type SharedData = ();
-    const PARTS: u8 = N;
 
     fn parse(_input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         Ok(Cow::Owned(()))
     }
+}
+
+impl<const N: u8> Solver for TestSolver<N> {
+    const PARTS: u8 = N;
 
     fn solve_part(
         _shared: &mut Cow<'_, Self::SharedData>,

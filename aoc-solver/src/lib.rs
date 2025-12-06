@@ -16,15 +16,14 @@
 //! # Quick Example
 //!
 //! ```
-//! use aoc_solver::{ParseError, RegistryBuilder, SolveError, Solver, SolverInstanceCow};
+//! use aoc_solver::{AocParser, ParseError, RegistryBuilder, SolveError, Solver, SolverInstanceCow};
 //! use std::borrow::Cow;
 //!
 //! // Define a solver
 //! pub struct MyDay1;
 //!
-//! impl Solver for MyDay1 {
+//! impl AocParser for MyDay1 {
 //!     type SharedData = Vec<i32>;
-//!     const PARTS: u8 = 1;
 //!     
 //!     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 //!         input.lines()
@@ -33,6 +32,10 @@
 //!             .collect::<Result<Vec<_>, _>>()
 //!             .map(Cow::Owned)
 //!     }
+//! }
+//!
+//! impl Solver for MyDay1 {
+//!     const PARTS: u8 = 1;
 //!     
 //!     fn solve_part(
 //!         shared: &mut Cow<'_, Self::SharedData>,
@@ -100,10 +103,10 @@ pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
 pub use registry::{
     RegisterableSolver, RegistryBuilder, SolverFactory, SolverPlugin, SolverRegistry,
 };
-pub use solver::{Solver, SolverExt};
+pub use solver::{AocParser, PartSolver, Solver, SolverExt};
 
 // Re-export inventory for use by the derive macro
 pub use inventory;
 
-// Re-export the derive macro
-pub use aoc_solver_macros::AutoRegisterSolver;
+// Re-export the derive macros
+pub use aoc_solver_macros::{AocSolver, AutoRegisterSolver};

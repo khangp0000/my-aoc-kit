@@ -204,18 +204,21 @@ impl SolverRegistry {
 /// # Example
 ///
 /// ```no_run
-/// use aoc_solver::{ParseError, RegisterableSolver, RegistryBuilder, SolveError, Solver};
+/// use aoc_solver::{AocParser, ParseError, RegisterableSolver, RegistryBuilder, SolveError, Solver};
 /// use std::borrow::Cow;
 ///
 /// struct MyDay1;
 ///
-/// impl Solver for MyDay1 {
+/// impl AocParser for MyDay1 {
 ///     type SharedData = ();
-///     const PARTS: u8 = 2;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
+/// }
+///
+/// impl Solver for MyDay1 {
+///     const PARTS: u8 = 2;
 ///     
 ///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
@@ -275,18 +278,21 @@ where
 /// # Example
 ///
 /// ```no_run
-/// use aoc_solver::{ParseError, SolveError, Solver, SolverPlugin};
+/// use aoc_solver::{AocParser, ParseError, SolveError, Solver, SolverPlugin};
 /// use std::borrow::Cow;
 ///
 /// struct Day1Solver;
 ///
-/// impl Solver for Day1Solver {
+/// impl AocParser for Day1Solver {
 ///     type SharedData = ();
-///     const PARTS: u8 = 1;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
+/// }
+///
+/// impl Solver for Day1Solver {
+///     const PARTS: u8 = 1;
 ///     
 ///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
@@ -327,18 +333,21 @@ inventory::collect!(SolverPlugin);
 /// # Example
 ///
 /// ```
-/// use aoc_solver::{register_solver, ParseError, RegistryBuilder, SolveError, Solver, SolverRegistry};
+/// use aoc_solver::{AocParser, register_solver, ParseError, RegistryBuilder, SolveError, Solver, SolverRegistry};
 /// use std::borrow::Cow;
 ///
 /// struct MyDay1Solver;
 ///
-/// impl Solver for MyDay1Solver {
+/// impl AocParser for MyDay1Solver {
 ///     type SharedData = ();
-///     const PARTS: u8 = 1;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
+/// }
+///
+/// impl Solver for MyDay1Solver {
+///     const PARTS: u8 = 1;
 ///     
 ///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))

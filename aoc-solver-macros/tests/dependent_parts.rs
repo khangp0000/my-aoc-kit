@@ -1,5 +1,5 @@
-use aoc_solver::{ParseError, Solver};
-use aoc_solver_macros::aoc_solver;
+use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError, Solver};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 struct SharedData {
@@ -8,13 +8,14 @@ struct SharedData {
     count: Option<usize>,
 }
 
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
 struct TestDependentSolver;
 
-#[aoc_solver(max_parts = 2)]
-impl TestDependentSolver {
+impl AocParser for TestDependentSolver {
     type SharedData = SharedData;
 
-    fn parse(input: &str) -> Result<SharedData, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         let numbers: Vec<i32> = input
             .lines()
             .map(|line| {
@@ -24,25 +25,30 @@ impl TestDependentSolver {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(SharedData {
+        Ok(Cow::Owned(SharedData {
             numbers,
             sum: None,
             count: None,
-        })
+        }))
     }
+}
 
-    fn part1(shared: &mut SharedData) -> String {
-        let sum: i32 = shared.numbers.iter().sum();
-        let count = shared.numbers.len();
+impl PartSolver<1> for TestDependentSolver {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+        let data = shared.to_mut();
+        let sum: i32 = data.numbers.iter().sum();
+        let count = data.numbers.len();
 
         // Store for part2
-        shared.sum = Some(sum);
-        shared.count = Some(count);
+        data.sum = Some(sum);
+        data.count = Some(count);
 
-        sum.to_string()
+        Ok(sum.to_string())
     }
+}
 
-    fn part2(shared: &mut SharedData) -> String {
+impl PartSolver<2> for TestDependentSolver {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
         // Use data from part1 if available, otherwise compute
         let sum = shared.sum.unwrap_or_else(|| shared.numbers.iter().sum());
         let count = shared.count.unwrap_or_else(|| shared.numbers.len());
@@ -52,7 +58,7 @@ impl TestDependentSolver {
         } else {
             0.0
         };
-        format!("{:.2}", avg)
+        Ok(format!("{:.2}", avg))
     }
 }
 
@@ -60,7 +66,7 @@ impl TestDependentSolver {
 fn test_dependent_parts_compiles() {
     // Test that the macro generates valid code
     let input = "10\n20\n30";
-    let cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+    let cow = <TestDependentSolver as AocParser>::parse(input).unwrap();
     let shared = cow.into_owned();
     assert_eq!(shared.numbers, vec![10, 20, 30]);
 }
@@ -68,9 +74,9 @@ fn test_dependent_parts_compiles() {
 #[test]
 fn test_part1_stores_data() {
     let input = "10\n20\n30";
-    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+    let mut cow = <TestDependentSolver as AocParser>::parse(input).unwrap();
 
-    let result = TestDependentSolver::solve_part(&mut cow, 1).unwrap();
+    let result = <TestDependentSolver as Solver>::solve_part(&mut cow, 1).unwrap();
     assert_eq!(result, "60");
 
     // Check that data was stored
@@ -81,13 +87,13 @@ fn test_part1_stores_data() {
 #[test]
 fn test_part2_uses_part1_data() {
     let input = "10\n20\n30";
-    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+    let mut cow = <TestDependentSolver as AocParser>::parse(input).unwrap();
 
     // First solve Part 1 to populate shared data
-    let _part1_result = TestDependentSolver::solve_part(&mut cow, 1).unwrap();
+    let _part1_result = <TestDependentSolver as Solver>::solve_part(&mut cow, 1).unwrap();
 
     // Now solve Part 2 which uses Part 1's data
-    let part2_result = TestDependentSolver::solve_part(&mut cow, 2).unwrap();
+    let part2_result = <TestDependentSolver as Solver>::solve_part(&mut cow, 2).unwrap();
 
     // Average of 10, 20, 30 is 20.00
     assert_eq!(part2_result, "20.00");
@@ -96,10 +102,10 @@ fn test_part2_uses_part1_data() {
 #[test]
 fn test_part2_solves_independently() {
     let input = "10\n20\n30";
-    let mut cow = <TestDependentSolver as Solver>::parse(input).unwrap();
+    let mut cow = <TestDependentSolver as AocParser>::parse(input).unwrap();
 
     // Solve Part 2 without Part 1 (shared.sum and shared.count are None)
-    let result = TestDependentSolver::solve_part(&mut cow, 2).unwrap();
+    let result = <TestDependentSolver as Solver>::solve_part(&mut cow, 2).unwrap();
 
     // Should still compute the correct average
     assert_eq!(result, "20.00");

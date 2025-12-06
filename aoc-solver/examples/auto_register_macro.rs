@@ -1,24 +1,26 @@
-//! Example demonstrating #[aoc_solver] with #[derive(AutoRegisterSolver)]
+//! Example demonstrating #[derive(AocSolver)] with #[derive(AutoRegisterSolver)]
 //!
 //! This example shows how to combine both macros for maximum convenience:
-//! - #[aoc_solver] generates the Solver trait implementation
+//! - #[derive(AocSolver)] generates the Solver trait implementation
 //! - #[derive(AutoRegisterSolver)] automatically registers with the plugin system
 //!
 //! Run with: cargo run --example auto_register_macro
 
-use aoc_solver::{AutoRegisterSolver, ParseError, RegistryBuilder};
-use aoc_solver_macros::aoc_solver;
+use aoc_solver::{
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+};
+use std::borrow::Cow;
 
 /// Day 1 solver with automatic registration
-#[derive(AutoRegisterSolver)]
+#[derive(AocSolver, AutoRegisterSolver)]
+#[aoc_solver(max_parts = 2)]
 #[aoc(year = 2023, day = 1, tags = ["example", "simple"])]
 struct Day1;
 
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
+impl AocParser for Day1 {
     type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -26,28 +28,33 @@ impl Day1 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
+}
 
-    fn part1(shared: &mut Vec<i32>) -> String {
-        shared.iter().sum::<i32>().to_string()
+impl PartSolver<1> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().sum::<i32>().to_string())
     }
+}
 
-    fn part2(shared: &mut Vec<i32>) -> String {
-        shared.iter().product::<i32>().to_string()
+impl PartSolver<2> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().product::<i32>().to_string())
     }
 }
 
 /// Day 2 solver with automatic registration
-#[derive(AutoRegisterSolver)]
+#[derive(AocSolver, AutoRegisterSolver)]
+#[aoc_solver(max_parts = 2)]
 #[aoc(year = 2023, day = 2, tags = ["example", "filtering"])]
 struct Day2;
 
-#[aoc_solver(max_parts = 2)]
-impl Day2 {
+impl AocParser for Day2 {
     type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -55,23 +62,28 @@ impl Day2 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
+}
 
-    fn part1(shared: &mut Vec<i32>) -> String {
-        shared
+impl PartSolver<1> for Day2 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared
             .iter()
             .filter(|&&x| x % 2 == 0)
             .sum::<i32>()
-            .to_string()
+            .to_string())
     }
+}
 
-    fn part2(shared: &mut Vec<i32>) -> String {
-        shared
+impl PartSolver<2> for Day2 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared
             .iter()
             .filter(|&&x| x % 2 != 0)
             .sum::<i32>()
-            .to_string()
+            .to_string())
     }
 }
 
@@ -123,8 +135,8 @@ fn main() {
     }
 
     println!("\n=== Benefits ===");
-    println!("✓ #[aoc_solver] eliminates Solver trait boilerplate");
+    println!("✓ AocParser + PartSolver<N> provide clean separation of concerns");
+    println!("✓ #[derive(AocSolver)] generates Solver trait implementation");
     println!("✓ #[derive(AutoRegisterSolver)] enables automatic discovery");
-    println!("✓ Both macros work together seamlessly");
     println!("✓ Zero manual registration code needed!");
 }

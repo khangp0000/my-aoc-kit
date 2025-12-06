@@ -5,20 +5,22 @@
 //!
 //! Run with: cargo run --example independent_parts
 
-use aoc_solver::{AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver};
+use aoc_solver::{
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+};
 use std::borrow::Cow;
 
 /// Example solver that processes lines of integers
 ///
 /// - Part 1: Sum all numbers
 /// - Part 2: Product of all numbers
-#[derive(AutoRegisterSolver)]
+#[derive(AocSolver, AutoRegisterSolver)]
+#[aoc_solver(max_parts = 2)]
 #[aoc(year = 2023, day = 1, tags = ["example", "independent"])]
 pub struct ExampleIndependent;
 
-impl Solver for ExampleIndependent {
+impl AocParser for ExampleIndependent {
     type SharedData = Vec<i32>;
-    const PARTS: u8 = 2;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -29,26 +31,23 @@ impl Solver for ExampleIndependent {
                 })
             })
             .collect::<Result<Vec<_>, _>>()
-            .map(|v| Cow::Owned(v))
+            .map(Cow::Owned)
     }
+}
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
-        match part {
-            1 => {
-                // Part 1: Sum all numbers (read-only, no need to call to_mut())
-                let sum: i32 = shared.iter().sum();
-                Ok(sum.to_string())
-            }
-            2 => {
-                // Part 2: Product of all numbers (read-only, no need to call to_mut())
-                let product: i32 = shared.iter().product();
-                Ok(product.to_string())
-            }
-            _ => Err(SolveError::PartNotImplemented(part)),
-        }
+impl PartSolver<1> for ExampleIndependent {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        // Part 1: Sum all numbers (read-only, no need to call to_mut())
+        let sum: i32 = shared.iter().sum();
+        Ok(sum.to_string())
+    }
+}
+
+impl PartSolver<2> for ExampleIndependent {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        // Part 2: Product of all numbers (read-only, no need to call to_mut())
+        let product: i32 = shared.iter().product();
+        Ok(product.to_string())
     }
 }
 
@@ -82,6 +81,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aoc_solver::Solver;
 
     #[test]
     fn test_parse_valid_input() {
@@ -107,21 +107,21 @@ mod tests {
     #[test]
     fn test_part1_sum() {
         let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
-        let result = ExampleIndependent::solve_part(&mut shared, 1).unwrap();
+        let result = <ExampleIndependent as PartSolver<1>>::solve(&mut shared).unwrap();
         assert_eq!(result, "15");
     }
 
     #[test]
     fn test_part2_product() {
         let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
-        let result = ExampleIndependent::solve_part(&mut shared, 2).unwrap();
+        let result = <ExampleIndependent as PartSolver<2>>::solve(&mut shared).unwrap();
         assert_eq!(result, "120");
     }
 
     #[test]
     fn test_invalid_part() {
         let mut shared = Cow::Owned(vec![1, 2, 3]);
-        let result = ExampleIndependent::solve_part(&mut shared, 3);
+        let result = <ExampleIndependent as Solver>::solve_part(&mut shared, 3);
         assert!(result.is_err());
         assert!(matches!(result, Err(SolveError::PartNotImplemented(3))));
     }

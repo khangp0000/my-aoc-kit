@@ -1,21 +1,22 @@
-//! Example demonstrating using #[aoc_solver] with manual plugin registration
+//! Example demonstrating using #[derive(AocSolver)] with manual plugin registration
 //!
-//! This example shows how to combine the #[aoc_solver] macro with the plugin
-//! system for automatic solver discovery.
+//! This example shows how to combine the AocSolver derive macro with the plugin
+//! system for automatic solver discovery using manual inventory::submit!.
 //!
 //! Run with: cargo run --example combined_macros
 
-use aoc_solver::{ParseError, RegistryBuilder};
-use aoc_solver_macros::aoc_solver;
+use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, RegistryBuilder, SolveError};
+use std::borrow::Cow;
 
 /// Example solver using the macro
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
 struct Day1;
 
-#[aoc_solver(max_parts = 2)]
-impl Day1 {
+impl AocParser for Day1 {
     type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -23,21 +24,24 @@ impl Day1 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
+}
 
-    fn part1(shared: &mut Vec<i32>) -> String {
-        shared.iter().sum::<i32>().to_string()
+impl PartSolver<1> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().sum::<i32>().to_string())
     }
+}
 
-    fn part2(shared: &mut Vec<i32>) -> String {
-        shared.iter().product::<i32>().to_string()
+impl PartSolver<2> for Day1 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared.iter().product::<i32>().to_string())
     }
 }
 
 // Manually register the solver with the plugin system
-// Note: AutoRegisterSolver derive macro can't be used on impl blocks,
-// so we use manual registration instead
 aoc_solver::inventory::submit! {
     aoc_solver::SolverPlugin {
         year: 2023,
@@ -48,13 +52,14 @@ aoc_solver::inventory::submit! {
 }
 
 /// Another solver for day 2
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
 struct Day2;
 
-#[aoc_solver(max_parts = 2)]
-impl Day2 {
+impl AocParser for Day2 {
     type SharedData = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Vec<i32>, ParseError> {
+    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -62,23 +67,28 @@ impl Day2 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
+            .map(Cow::Owned)
     }
+}
 
-    fn part1(shared: &mut Vec<i32>) -> String {
-        shared
+impl PartSolver<1> for Day2 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared
             .iter()
             .filter(|&&x| x % 2 == 0)
             .sum::<i32>()
-            .to_string()
+            .to_string())
     }
+}
 
-    fn part2(shared: &mut Vec<i32>) -> String {
-        shared
+impl PartSolver<2> for Day2 {
+    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+        Ok(shared
             .iter()
             .filter(|&&x| x % 2 != 0)
             .sum::<i32>()
-            .to_string()
+            .to_string())
     }
 }
 
@@ -140,8 +150,8 @@ fn main() {
     }
 
     println!("\n=== Benefits ===");
-    println!("✓ #[aoc_solver] eliminates Solver trait boilerplate");
+    println!("✓ AocParser + PartSolver<N> provide clean separation of concerns");
+    println!("✓ #[derive(AocSolver)] generates Solver trait implementation");
     println!("✓ Manual plugin registration enables automatic discovery");
     println!("✓ Registry can filter by tags, year, or custom predicates");
-    println!("✓ All solvers are discovered and registered automatically");
 }

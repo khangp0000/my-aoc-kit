@@ -6,16 +6,10 @@
 //!
 //! Run with: cargo run --example dependent_parts
 
-use aoc_solver::{AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver};
+use aoc_solver::{
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+};
 use std::borrow::Cow;
-
-/// Example solver that processes lines of integers with dependent parts
-///
-/// - Part 1: Calculate sum and count, return the sum as the answer
-/// - Part 2: Use Part 1's data to calculate average, or compute independently
-#[derive(AutoRegisterSolver)]
-#[aoc(year = 2023, day = 2, tags = ["example", "dependent"])]
-pub struct ExampleDependent;
 
 /// Shared data that can be mutated by parts to pass information
 #[derive(Debug, Clone)]
@@ -25,9 +19,17 @@ pub struct SharedData {
     pub count: Option<usize>,
 }
 
-impl Solver for ExampleDependent {
+/// Example solver that processes lines of integers with dependent parts
+///
+/// - Part 1: Calculate sum and count, return the sum as the answer
+/// - Part 2: Use Part 1's data to calculate average, or compute independently
+#[derive(AocSolver, AutoRegisterSolver)]
+#[aoc_solver(max_parts = 2)]
+#[aoc(year = 2023, day = 2, tags = ["example", "dependent"])]
+pub struct ExampleDependent;
+
+impl AocParser for ExampleDependent {
     type SharedData = SharedData;
-    const PARTS: u8 = 2;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         let numbers: Vec<i32> = input
@@ -45,51 +47,48 @@ impl Solver for ExampleDependent {
             count: None,
         }))
     }
+}
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
-        match part {
-            1 => {
-                // Part 1: Calculate sum and count
-                // Need to mutate, so call to_mut() to get owned data
-                let data = shared.to_mut();
-                let sum: i32 = data.numbers.iter().sum();
-                let count = data.numbers.len();
+impl PartSolver<1> for ExampleDependent {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+        // Part 1: Calculate sum and count
+        // Need to mutate, so call to_mut() to get owned data
+        let data = shared.to_mut();
+        let sum: i32 = data.numbers.iter().sum();
+        let count = data.numbers.len();
 
-                // Store for Part 2
-                data.sum = Some(sum);
-                data.count = Some(count);
+        // Store for Part 2
+        data.sum = Some(sum);
+        data.count = Some(count);
 
-                Ok(sum.to_string())
+        Ok(sum.to_string())
+    }
+}
+
+impl PartSolver<2> for ExampleDependent {
+    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+        // Part 2: Calculate average using Part 1's data if available
+        let average = if let (Some(sum), Some(count)) = (shared.sum, shared.count) {
+            // Use the data from Part 1 (read-only access)
+            println!("Using Part 1 data: sum={}, count={}", sum, count);
+            if count > 0 {
+                sum as f64 / count as f64
+            } else {
+                0.0
             }
-            2 => {
-                // Part 2: Calculate average using Part 1's data if available
-                let average = if let (Some(sum), Some(count)) = (shared.sum, shared.count) {
-                    // Use the data from Part 1 (read-only access)
-                    println!("Using Part 1 data: sum={}, count={}", sum, count);
-                    if count > 0 {
-                        sum as f64 / count as f64
-                    } else {
-                        0.0
-                    }
-                } else {
-                    // Compute independently if Part 1 wasn't run (read-only access)
-                    println!("Computing independently (Part 1 not run)");
-                    let sum: i32 = shared.numbers.iter().sum();
-                    let count = shared.numbers.len();
-                    if count > 0 {
-                        sum as f64 / count as f64
-                    } else {
-                        0.0
-                    }
-                };
-
-                Ok(format!("{:.2}", average))
+        } else {
+            // Compute independently if Part 1 wasn't run (read-only access)
+            println!("Computing independently (Part 1 not run)");
+            let sum: i32 = shared.numbers.iter().sum();
+            let count = shared.numbers.len();
+            if count > 0 {
+                sum as f64 / count as f64
+            } else {
+                0.0
             }
-            _ => Err(SolveError::PartNotImplemented(part)),
-        }
+        };
+
+        Ok(format!("{:.2}", average))
     }
 }
 
@@ -129,7 +128,7 @@ mod tests {
     #[test]
     fn test_parse_valid_input() {
         let input = "10\n20\n30";
-        let cow = ExampleDependent::parse(input).unwrap();
+        let cow = <ExampleDependent as AocParser>::parse(input).unwrap();
         let shared = cow.into_owned();
         assert_eq!(shared.numbers, vec![10, 20, 30]);
     }
@@ -141,7 +140,7 @@ mod tests {
             sum: None,
             count: None,
         });
-        let result = ExampleDependent::solve_part(&mut shared, 1).unwrap();
+        let result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
 
         assert_eq!(result, "60");
         assert_eq!(shared.sum, Some(60));
@@ -157,10 +156,10 @@ mod tests {
         });
 
         // First solve Part 1 to populate shared data
-        let _part1_result = ExampleDependent::solve_part(&mut shared, 1).unwrap();
+        let _part1_result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
 
         // Now solve Part 2 which uses Part 1's data
-        let part2_result = ExampleDependent::solve_part(&mut shared, 2).unwrap();
+        let part2_result = <ExampleDependent as PartSolver<2>>::solve(&mut shared).unwrap();
 
         // Average of 10, 20, 30 is 20.00
         assert_eq!(part2_result, "20.00");
@@ -175,7 +174,7 @@ mod tests {
         });
 
         // Solve Part 2 without Part 1's data
-        let result = ExampleDependent::solve_part(&mut shared, 2).unwrap();
+        let result = <ExampleDependent as PartSolver<2>>::solve(&mut shared).unwrap();
 
         // Should still compute the correct average
         assert_eq!(result, "20.00");
@@ -189,10 +188,10 @@ mod tests {
             count: None,
         });
 
-        let part1_result = ExampleDependent::solve_part(&mut shared, 1).unwrap();
+        let part1_result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
         assert_eq!(part1_result, "0");
 
-        let part2_result = ExampleDependent::solve_part(&mut shared, 2).unwrap();
+        let part2_result = <ExampleDependent as PartSolver<2>>::solve(&mut shared).unwrap();
         assert_eq!(part2_result, "0.00");
     }
 }
