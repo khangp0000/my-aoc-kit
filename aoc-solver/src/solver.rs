@@ -154,10 +154,7 @@ pub trait Solver: AocParser {
     /// * `Ok(String)` - The answer for this part
     /// * `Err(SolveError::PartNotImplemented)` - The part is not implemented
     /// * `Err(SolveError::SolveFailed)` - An error occurred while solving
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError>;
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError>;
 }
 
 pub trait SolverExt: Solver {

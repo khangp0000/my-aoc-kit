@@ -192,10 +192,12 @@ fn main() {
     let input3 = "2\n4\n6";
     let mut cow = <SimpleExample as AocParser>::parse(input3).expect("Failed to parse");
 
-    let result1 = <SimpleExample as PartSolver<1>>::solve(&mut cow).expect("Failed to solve part 1");
+    let result1 =
+        <SimpleExample as PartSolver<1>>::solve(&mut cow).expect("Failed to solve part 1");
     println!("Part 1: {}", result1);
 
-    let result2 = <SimpleExample as PartSolver<2>>::solve(&mut cow).expect("Failed to solve part 2");
+    let result2 =
+        <SimpleExample as PartSolver<2>>::solve(&mut cow).expect("Failed to solve part 2");
     println!("Part 2: {}", result2);
 
     // Trying to solve part 3 via Solver trait returns PartNotImplemented error

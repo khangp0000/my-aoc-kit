@@ -105,7 +105,6 @@ mod property_2_invalid_part_rejection {
     }
 }
 
-
 /// **Feature: trait-based-solver-redesign, Property 3: Zero-copy read preservation**
 ///
 /// *For any* solver where part functions only read from shared data (no `to_mut()` calls),
@@ -127,7 +126,10 @@ mod property_3_zero_copy_read {
             let numbers: Vec<i32> = input
                 .lines()
                 .filter(|l| !l.is_empty())
-                .map(|l| l.parse().map_err(|_| ParseError::InvalidFormat("bad int".into())))
+                .map(|l| {
+                    l.parse()
+                        .map_err(|_| ParseError::InvalidFormat("bad int".into()))
+                })
                 .collect::<Result<_, _>>()?;
             Ok(Cow::Owned(numbers))
         }
@@ -187,7 +189,10 @@ mod property_4_clone_on_write {
             let numbers: Vec<i32> = input
                 .lines()
                 .filter(|l| !l.is_empty())
-                .map(|l| l.parse().map_err(|_| ParseError::InvalidFormat("bad int".into())))
+                .map(|l| {
+                    l.parse()
+                        .map_err(|_| ParseError::InvalidFormat("bad int".into()))
+                })
                 .collect::<Result<_, _>>()?;
             Ok(Cow::Owned(MutableData {
                 numbers,

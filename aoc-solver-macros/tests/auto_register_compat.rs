@@ -1,4 +1,7 @@
-use aoc_solver::{AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError, Solver};
+use aoc_solver::{
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+    Solver,
+};
 use std::borrow::Cow;
 
 #[derive(AocSolver)]

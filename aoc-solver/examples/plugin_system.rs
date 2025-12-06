@@ -38,10 +38,7 @@ impl AocParser for PluginDay1 {
 impl Solver for PluginDay1 {
     const PARTS: u8 = 1;
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
@@ -75,10 +72,7 @@ impl AocParser for PluginDay2 {
 impl Solver for PluginDay2 {
     const PARTS: u8 = 1;
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().product::<i32>().to_string()),
             _ => Err(SolveError::PartNotImplemented(part)),
@@ -122,10 +116,7 @@ impl AocParser for PluginDay3 {
 impl Solver for PluginDay3 {
     const PARTS: u8 = 1;
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => {
                 let max = shared.iter().max().copied().unwrap_or(0);
@@ -173,10 +164,7 @@ impl AocParser for PluginDay4Derive {
 impl Solver for PluginDay4Derive {
     const PARTS: u8 = 1;
 
-    fn solve_part(
-        shared: &mut Cow<'_, Self::SharedData>,
-        part: u8,
-    ) -> Result<String, SolveError> {
+    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => {
                 let min = shared.iter().min().copied().unwrap_or(0);

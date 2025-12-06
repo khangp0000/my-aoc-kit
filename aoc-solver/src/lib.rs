@@ -101,7 +101,9 @@ mod solver;
 pub use error::{ParseError, RegistrationError, SolveError, SolverError};
 pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
 pub use registry::{
-    RegisterableSolver, RegistryBuilder, SolverFactory, SolverPlugin, SolverRegistry,
+    BASE_YEAR, CAPACITY, DAYS_PER_YEAR, FactoryInfo, FactoryRegistryBuilder, MAX_YEARS,
+    RegisterableFactory, RegisterableSolver, RegistryBuilder, SolverFactory, SolverFactoryRegistry,
+    SolverFactoryStorage, SolverFactorySync, SolverPlugin, SolverRegistry,
 };
 pub use solver::{AocParser, PartSolver, Solver, SolverExt};
 

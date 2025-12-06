@@ -1,0 +1,13 @@
+[package]
+name = "aoc-solutions"
+version = "0.1.0"
+edition = "2021"
+description = "Advent of Code puzzle solutions with automatic registration"
+license = "MIT"
+
+[dependencies]
+aoc-solver = { path = "../aoc-solver" }
+aoc-solver-macros = { path = "../aoc-solver-macros" }
+
+[dev-dependencies]
+proptest = "1.5"
