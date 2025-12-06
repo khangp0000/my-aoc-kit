@@ -24,6 +24,7 @@ use std::borrow::Cow;
 ///
 /// impl Solver for Day1Solver {
 ///     type SharedData = SharedData;
+///     const PARTS: u8 = 2;
 ///
 ///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         let numbers = input.lines()
@@ -35,7 +36,7 @@ use std::borrow::Cow;
 ///
 ///     fn solve_part(
 ///         shared: &mut Cow<'_, Self::SharedData>,
-///         part: usize,
+///         part: u8,
 ///     ) -> Result<String, SolveError> {
 ///         match part {
 ///             1 => {
@@ -56,6 +57,8 @@ use std::borrow::Cow;
 pub trait Solver {
     /// The shared data structure that holds parsed input and intermediate results
     type SharedData: ToOwned;
+
+    const PARTS: u8;
 
     /// Parse the input string into the shared data structure
     ///
@@ -80,6 +83,21 @@ pub trait Solver {
     /// * `Err(SolveError::SolveFailed)` - An error occurred while solving
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError>;
 }
+
+pub trait SolverExt: Solver {
+    fn solve_part_checked_range(
+        shared: &mut Cow<'_, Self::SharedData>,
+        part: u8,
+    ) -> Result<String, SolveError> {
+        if (1..=Self::PARTS).contains(&part) {
+            Self::solve_part(shared, part)
+        } else {
+            Err(SolveError::PartOutOfRange(part))
+        }
+    }
+}
+
+impl<T: Solver + ?Sized> SolverExt for T {}

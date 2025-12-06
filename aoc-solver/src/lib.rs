@@ -24,6 +24,7 @@
 //!
 //! impl Solver for MyDay1 {
 //!     type SharedData = Vec<i32>;
+//!     const PARTS: u8 = 1;
 //!     
 //!     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 //!         input.lines()
@@ -35,7 +36,7 @@
 //!     
 //!     fn solve_part(
 //!         shared: &mut Cow<'_, Self::SharedData>,
-//!         part: usize,
+//!         part: u8,
 //!     ) -> Result<String, SolveError> {
 //!         match part {
 //!             1 => Ok(shared.iter().sum::<i32>().to_string()),
@@ -99,7 +100,7 @@ pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
 pub use registry::{
     RegisterableSolver, RegistryBuilder, SolverFactory, SolverPlugin, SolverRegistry,
 };
-pub use solver::Solver;
+pub use solver::{Solver, SolverExt};
 
 // Re-export inventory for use by the derive macro
 pub use inventory;

@@ -26,7 +26,7 @@ pub type SolverFactory =
 ///     .build();
 /// ```
 pub struct RegistryBuilder {
-    solvers: HashMap<(u32, u32), SolverFactory>,
+    solvers: HashMap<(u16, u8), SolverFactory>,
 }
 
 impl RegistryBuilder {
@@ -49,7 +49,7 @@ impl RegistryBuilder {
     /// # Returns
     /// * `Ok(Self)` - Builder with the solver registered, ready for chaining
     /// * `Err(RegistrationError)` - Duplicate solver for this year-day combination
-    pub fn register<F>(mut self, year: u32, day: u32, factory: F) -> Result<Self, RegistrationError>
+    pub fn register<F>(mut self, year: u16, day: u8, factory: F) -> Result<Self, RegistrationError>
     where
         F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError> + 'static,
     {
@@ -159,7 +159,7 @@ impl Default for RegistryBuilder {
 /// // let solver = registry.create_solver(2023, 1, "input data").unwrap();
 /// ```
 pub struct SolverRegistry {
-    solvers: HashMap<(u32, u32), SolverFactory>,
+    solvers: HashMap<(u16, u8), SolverFactory>,
 }
 
 impl SolverRegistry {
@@ -175,8 +175,8 @@ impl SolverRegistry {
     /// * `Err(SolverError)` - Solver not found or parsing failed
     pub fn create_solver<'a>(
         &self,
-        year: u32,
-        day: u32,
+        year: u16,
+        day: u8,
         input: &'a str,
     ) -> Result<Box<dyn DynSolver + 'a>, SolverError> {
         let factory = self
@@ -211,12 +211,13 @@ impl SolverRegistry {
 ///
 /// impl Solver for MyDay1 {
 ///     type SharedData = ();
+///     const PARTS: u8 = 2;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }
@@ -240,8 +241,8 @@ pub trait RegisterableSolver: Sync {
     fn register_with(
         &self,
         builder: RegistryBuilder,
-        year: u32,
-        day: u32,
+        year: u16,
+        day: u8,
     ) -> Result<RegistryBuilder, RegistrationError>;
 }
 
@@ -256,8 +257,8 @@ where
     fn register_with(
         &self,
         builder: RegistryBuilder,
-        year: u32,
-        day: u32,
+        year: u16,
+        day: u8,
     ) -> Result<RegistryBuilder, RegistrationError> {
         builder.register(year, day, move |input: &str| {
             let shared = S::parse(input)?;
@@ -281,12 +282,13 @@ where
 ///
 /// impl Solver for Day1Solver {
 ///     type SharedData = ();
+///     const PARTS: u8 = 1;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }
@@ -302,9 +304,9 @@ where
 /// ```
 pub struct SolverPlugin {
     /// The Advent of Code year
-    pub year: u32,
+    pub year: u16,
     /// The day number (1-25)
-    pub day: u32,
+    pub day: u8,
     /// The solver instance (type-erased)
     pub solver: &'static dyn RegisterableSolver,
     /// Optional tags for filtering (e.g., "easy", "hard", "2023", "parsing")
@@ -332,12 +334,13 @@ inventory::collect!(SolverPlugin);
 ///
 /// impl Solver for MyDay1Solver {
 ///     type SharedData = ();
+///     const PARTS: u8 = 1;
 ///     
 ///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
 ///         Ok(Cow::Owned(()))
 ///     }
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: usize) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }

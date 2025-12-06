@@ -1,7 +1,7 @@
 //! Solver instance implementation
 
 use crate::error::SolveError;
-use crate::solver::Solver;
+use crate::solver::{Solver, SolverExt};
 use std::borrow::Cow;
 use std::ops::Deref;
 
@@ -10,8 +10,8 @@ use std::ops::Deref;
 /// Manages the state for solving a specific year-day problem, including:
 /// - The shared data (parsed input and intermediate results)
 pub struct SolverInstanceCow<'a, S: Solver> {
-    year: u32,
-    day: u32,
+    year: u16,
+    day: u8,
     shared: Cow<'a, S::SharedData>,
 }
 
@@ -46,7 +46,7 @@ impl<'a, S: Solver> SolverInstanceCow<'a, S> {
     /// * `year` - The Advent of Code year
     /// * `day` - The day number (1-25)
     /// * `shared` - The shared data (parsed input)
-    pub fn new(year: u32, day: u32, shared: Cow<'a, S::SharedData>) -> Self {
+    pub fn new(year: u16, day: u8, shared: Cow<'a, S::SharedData>) -> Self {
         Self { year, day, shared }
     }
 }
@@ -83,25 +83,32 @@ pub trait DynSolver {
     /// # Returns
     /// * `Ok(String)` - The part was solved successfully and the answer
     /// * `Err(SolveError)` - The part is not implemented or solving failed
-    fn solve(&mut self, part: usize) -> Result<String, SolveError>;
+    fn solve(&mut self, part: u8) -> Result<String, SolveError>;
 
     /// Get the year for this solver
-    fn year(&self) -> u32;
+    fn year(&self) -> u16;
 
     /// Get the day for this solver
-    fn day(&self) -> u32;
+    fn day(&self) -> u8;
+
+    /// Get the number of parts this solver supports
+    fn parts(&self) -> u8;
 }
 
-impl<'a, S: Solver> DynSolver for SolverInstanceCow<'a, S> {
-    fn solve(&mut self, part: usize) -> Result<String, SolveError> {
-        S::solve_part(&mut self.shared, part)
+impl<'a, S: SolverExt> DynSolver for SolverInstanceCow<'a, S> {
+    fn solve(&mut self, part: u8) -> Result<String, SolveError> {
+        S::solve_part_checked_range(&mut self.shared, part)
     }
 
-    fn year(&self) -> u32 {
+    fn year(&self) -> u16 {
         self.year
     }
 
-    fn day(&self) -> u32 {
+    fn day(&self) -> u8 {
         self.day
+    }
+
+    fn parts(&self) -> u8 {
+        S::PARTS
     }
 }

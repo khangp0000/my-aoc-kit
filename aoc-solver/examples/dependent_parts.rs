@@ -27,6 +27,7 @@ pub struct SharedData {
 
 impl Solver for ExampleDependent {
     type SharedData = SharedData;
+    const PARTS: u8 = 2;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         let numbers: Vec<i32> = input
@@ -47,7 +48,7 @@ impl Solver for ExampleDependent {
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => {

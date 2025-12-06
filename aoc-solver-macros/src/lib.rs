@@ -61,8 +61,8 @@ pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
         .expect("AutoRegisterSolver derive macro requires #[aoc(...)] attribute");
 
     // Parse the attribute arguments
-    let mut year: Option<u32> = None;
-    let mut day: Option<u32> = None;
+    let mut year: Option<u16> = None;
+    let mut day: Option<u8> = None;
     let mut tags: Vec<String> = Vec::new();
 
     // Parse nested meta items
@@ -223,7 +223,7 @@ pub fn aoc_solver(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Parse the max_parts attribute value
-fn parse_max_parts(attr: TokenStream) -> Result<usize, TokenStream> {
+fn parse_max_parts(attr: TokenStream) -> Result<u8, TokenStream> {
     if attr.is_empty() {
         return Err(TokenStream::from(quote! {
             compile_error!("aoc_solver: missing required attribute 'max_parts'. Use: #[aoc_solver(max_parts = N)]");
@@ -231,14 +231,14 @@ fn parse_max_parts(attr: TokenStream) -> Result<usize, TokenStream> {
     }
 
     // Use a cell to capture the value
-    let mut max_parts: Option<usize> = None;
+    let mut max_parts: Option<u8> = None;
 
     // Parse as a meta list parser
     let parser = syn::meta::parser(|meta| {
         if meta.path.is_ident("max_parts") {
             let value: Lit = meta.value()?.parse()?;
             if let Lit::Int(lit_int) = value {
-                let n: usize = lit_int.base10_parse()?;
+                let n: u8 = lit_int.base10_parse()?;
                 if n < 1 {
                     return Err(meta.error("max_parts must be at least 1"));
                 }
@@ -269,7 +269,7 @@ struct ExtractedComponents {
     struct_name: Ident,
     shared_data_type: Option<Type>,
     parse_fn: Option<ImplItemFn>,
-    part_fns: Vec<(usize, ImplItemFn)>,
+    part_fns: Vec<(u8, ImplItemFn)>,
 }
 
 /// Extract all required components from the impl block
@@ -287,7 +287,7 @@ fn extract_components(impl_block: &ItemImpl) -> ExtractedComponents {
 
     let mut shared_data_type: Option<Type> = None;
     let mut parse_fn: Option<ImplItemFn> = None;
-    let mut part_fns: Vec<(usize, ImplItemFn)> = Vec::new();
+    let mut part_fns: Vec<(u8, ImplItemFn)> = Vec::new();
 
     for item in &impl_block.items {
         match item {
@@ -303,7 +303,7 @@ fn extract_components(impl_block: &ItemImpl) -> ExtractedComponents {
                     parse_fn = Some(func.clone());
                 } else if let Some(suffix) = fn_name.strip_prefix("part") {
                     // Extract part number from function name (e.g., "part1" -> 1)
-                    if let Ok(part_num) = suffix.parse::<usize>() {
+                    if let Ok(part_num) = suffix.parse::<u8>() {
                         part_fns.push((part_num, func.clone()));
                     }
                 }
@@ -326,7 +326,7 @@ fn extract_components(impl_block: &ItemImpl) -> ExtractedComponents {
 /// Validate that all required components are present
 fn validate_components(
     components: &ExtractedComponents,
-    max_parts: usize,
+    max_parts: u8,
 ) -> Result<Vec<PartSignature>, TokenStream> {
     // Validate SharedData type exists
     if components.shared_data_type.is_none() {
@@ -492,17 +492,18 @@ fn unsupported_return_type_error(fn_name: &Ident) -> Result<ReturnType, TokenStr
 fn generate_solver_impl(
     components: &ExtractedComponents,
     signatures: &[PartSignature],
-    max_parts: usize,
+    max_parts: u8,
 ) -> proc_macro2::TokenStream {
     let struct_name = &components.struct_name;
     let shared_data_type = components.shared_data_type.as_ref().unwrap();
 
     // Generate the solve_part match arms
-    let match_arms = generate_match_arms(components, signatures, max_parts);
+    let match_arms = generate_match_arms(components, signatures);
 
     quote! {
         impl ::aoc_solver::Solver for #struct_name {
             type SharedData = #shared_data_type;
+            const PARTS: u8 = #max_parts;
 
             fn parse(input: &str) -> Result<std::borrow::Cow<'_, Self::SharedData>, ::aoc_solver::ParseError> {
                 <#struct_name>::parse(input).map(std::borrow::Cow::Owned)
@@ -510,7 +511,7 @@ fn generate_solver_impl(
 
             fn solve_part(
                 shared: &mut std::borrow::Cow<'_, Self::SharedData>,
-                part: usize,
+                part: u8,
             ) -> Result<String, ::aoc_solver::SolveError> {
                 match part {
                     #(#match_arms)*
@@ -525,7 +526,6 @@ fn generate_solver_impl(
 fn generate_match_arms(
     components: &ExtractedComponents,
     signatures: &[PartSignature],
-    _max_parts: usize,
 ) -> Vec<proc_macro2::TokenStream> {
     let struct_name = &components.struct_name;
 

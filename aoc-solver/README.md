@@ -24,6 +24,7 @@ pub struct Day1Solver;
 
 impl Solver for Day1Solver {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 2;
     
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input.lines()
@@ -35,7 +36,7 @@ impl Solver for Day1Solver {
     
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
@@ -284,6 +285,7 @@ pub struct Day1Solver;
 
 impl Solver for Day1Solver {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 1;
     
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input.lines()
@@ -295,7 +297,7 @@ impl Solver for Day1Solver {
     
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
@@ -352,6 +354,7 @@ pub struct Day5Solver;
 
 impl Solver for Day5Solver {
     type SharedData = SharedData;
+    const PARTS: u8 = 2;
     
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         let numbers: Vec<i32> = input.lines()
@@ -368,7 +371,7 @@ impl Solver for Day5Solver {
     
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => {
@@ -412,6 +415,7 @@ impl Solver for Day5Solver {
 The `Solver` trait is the core interface that all problem solvers implement:
 
 - `SharedData`: The data structure holding parsed input and intermediate results (must implement `ToOwned`)
+- `PARTS`: A `const u8` declaring how many parts this solver supports
 - `parse()`: Transforms raw input into `Cow<SharedData>` for zero-copy support
 - `solve_part()`: Solves a specific part with mutable access to `Cow<SharedData>`
 
@@ -419,7 +423,8 @@ The `Solver` trait is the core interface that all problem solvers implement:
 
 The `DynSolver` trait provides a type-erased interface for working with any solver:
 
-- `solve(part)`: Computes the solution for a specific part
+- `solve(part)`: Computes the solution for a specific part (with automatic range validation)
+- `parts()`: Get the number of parts this solver supports
 - `year()` and `day()`: Get the solver's year and day
 
 ### Zero-Copy Design
@@ -476,7 +481,8 @@ The library uses `Result` types for all fallible operations:
   - `Other`: Other parsing issues
   
 - `SolveError`: Part solving failures
-  - `PartNotImplemented(usize)`: The requested part is not implemented
+  - `PartNotImplemented(u8)`: The requested part is not implemented
+  - `PartOutOfRange(u8)`: The requested part exceeds the solver's PARTS
   - `SolveFailed(String)`: Custom error from solver logic
   
 - `SolverError`: Registry operations

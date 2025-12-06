@@ -21,6 +21,7 @@ pub struct PluginDay1;
 
 impl Solver for PluginDay1 {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -36,7 +37,7 @@ impl Solver for PluginDay1 {
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
@@ -54,6 +55,7 @@ pub struct PluginDay2;
 
 impl Solver for PluginDay2 {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -69,7 +71,7 @@ impl Solver for PluginDay2 {
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().product::<i32>().to_string()),
@@ -97,6 +99,7 @@ pub struct PluginDay3;
 
 impl Solver for PluginDay3 {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -112,7 +115,7 @@ impl Solver for PluginDay3 {
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => {
@@ -144,6 +147,7 @@ pub struct PluginDay4Derive;
 
 impl Solver for PluginDay4Derive {
     type SharedData = Vec<i32>;
+    const PARTS: u8 = 1;
 
     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
         input
@@ -159,7 +163,7 @@ impl Solver for PluginDay4Derive {
 
     fn solve_part(
         shared: &mut Cow<'_, Self::SharedData>,
-        part: usize,
+        part: u8,
     ) -> Result<String, SolveError> {
         match part {
             1 => {
