@@ -470,19 +470,30 @@ macro_rules! register_solver {
 }
 
 // ============================================================================
-// New Flat Vec Storage Implementation
+// Factory Storage Implementation
 // ============================================================================
 
-/// Immutable storage for solver factories with O(1) access
+/// Immutable storage for solver factories.
 ///
-/// Uses a flat Vec with index math for efficient storage and lookup.
-/// Supports years 2015-2034 and days 1-25.
+/// Provides efficient lookup and iteration over registered solver factories.
+/// Supports years 2015-2034 and days 1-25. The internal implementation may
+/// vary to optimize for different use cases (e.g., memory vs speed).
+///
+/// # Ordering Guarantee
+///
+/// All iteration methods (`iter_info`, `iter_factories`) MUST yield items
+/// in ascending (year, day) order. This is a contract that consumers rely on
+/// for grouping operations like `chunk_by`. Any alternative storage implementation
+/// must maintain this ordering invariant.
 pub struct SolverFactoryStorage {
     entries: Vec<Option<SolverFactoryEntry>>,
 }
 
 impl SolverFactoryStorage {
-    /// Iterate over metadata for all registered factories
+    /// Iterate over metadata for all registered factories.
+    ///
+    /// Items are yielded in ascending (year, day) order. This ordering is
+    /// guaranteed and can be relied upon for grouping operations like `chunk_by`.
     pub fn iter_info(&self) -> impl Iterator<Item = FactoryInfo> + '_ {
         self.entries.iter().enumerate().filter_map(|(i, entry)| {
             entry.as_ref().map(|e| {
@@ -512,7 +523,10 @@ impl SolverFactoryStorage {
         self.get_info(year, day).is_some()
     }
 
-    /// Iterate over all factories with their metadata
+    /// Iterate over all factories with their metadata.
+    ///
+    /// Items are yielded in ascending (year, day) order. This ordering is
+    /// guaranteed and can be relied upon for grouping operations like `chunk_by`.
     pub fn iter_factories(&self) -> impl Iterator<Item = (FactoryInfo, &SolverFactorySync)> + '_ {
         self.entries.iter().enumerate().filter_map(|(i, entry)| {
             entry.as_ref().map(|e| {
