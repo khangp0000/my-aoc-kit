@@ -58,10 +58,10 @@ impl PartSolver<2> for Day1 {
 ### Register and Use
 
 ```rust
-use aoc_solver::{RegistryBuilder, Solver, SolverInstanceCow};
+use aoc_solver::{SolverRegistryBuilder, Solver, SolverInstanceCow};
 
 fn main() {
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register(2023, 1, |input: &str| {
             let shared = Day1::parse(input)?;
             Ok(Box::new(SolverInstanceCow::<Day1>::new(2023, 1, shared)))
@@ -182,7 +182,7 @@ impl PartSolver<2> for Day1 { /* ... */ }
 
 // Discover and use all registered solvers
 fn main() {
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .unwrap()
         .build();
@@ -196,13 +196,13 @@ fn main() {
 
 ```rust
 // Register only solvers with specific tags
-let registry = RegistryBuilder::new()
+let registry = SolverRegistryBuilder::new()
     .register_solver_plugins(|plugin| plugin.tags.contains(&"easy"))
     .unwrap()
     .build();
 
 // Register only 2023 solvers
-let registry = RegistryBuilder::new()
+let registry = SolverRegistryBuilder::new()
     .register_solver_plugins(|plugin| plugin.year == 2023)
     .unwrap()
     .build();
@@ -247,16 +247,24 @@ The library uses `Cow<SharedData>` to enable zero-copy parsing:
 - Read-only operations work directly with borrowed data
 - Call `.to_mut()` only when mutation is needed (triggers clone if borrowed)
 
-### RegistryBuilder and SolverRegistry
+### SolverRegistryBuilder and SolverRegistry
 
-**RegistryBuilder** (mutable, for construction):
-- `register()`: Add a solver factory
+**SolverRegistryBuilder** (mutable, for construction):
+- `register()`: Add a solver factory (defaults to 2 parts)
+- `register_factory()`: Add a solver factory with explicit parts count
 - `register_all_plugins()`: Register all discovered plugins
 - `register_solver_plugins(filter)`: Register plugins matching a predicate
 - `build()`: Finalize into an immutable `SolverRegistry`
 
 **SolverRegistry** (immutable, for usage):
+- `storage()`: Access the internal `SolverRegistryStorage` for iteration/lookup
 - `create_solver()`: Create a solver instance with input
+
+**SolverRegistryStorage** (internal storage):
+- `iter_info()`: Iterate over registered solver metadata in (year, day) order
+- `get_info()`: Get metadata for a specific year/day
+- `contains()`: Check if a solver is registered
+- `len()`, `is_empty()`: Count registered solvers
 
 ## Examples
 

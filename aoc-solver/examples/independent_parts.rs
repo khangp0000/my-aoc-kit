@@ -6,7 +6,8 @@
 //! Run with: cargo run --example independent_parts
 
 use aoc_solver::{
-    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError,
+    SolverRegistryBuilder,
 };
 use std::borrow::Cow;
 
@@ -55,7 +56,7 @@ fn main() {
     println!("=== Independent Parts Example ===\n");
 
     // Use the plugin system with automatic registration via derive macro
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();

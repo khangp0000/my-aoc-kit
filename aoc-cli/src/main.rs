@@ -11,7 +11,7 @@ mod output;
 // Import aoc-solutions to link the solver plugins
 use aoc_solutions as _;
 
-use aoc_solver::FactoryRegistryBuilder;
+use aoc_solver::SolverRegistryBuilder;
 use clap::Parser;
 use cli::Args;
 use config::Config;
@@ -156,8 +156,8 @@ fn run_executor(executor: Executor, config: Config) -> Result<(), error::CliErro
 }
 
 /// Build registry with tag filtering
-fn build_registry(tags: &[String]) -> Result<aoc_solver::SolverFactoryRegistry, error::CliError> {
-    let builder = FactoryRegistryBuilder::new();
+fn build_registry(tags: &[String]) -> Result<aoc_solver::SolverRegistry, error::CliError> {
+    let builder = SolverRegistryBuilder::new();
 
     let builder = if tags.is_empty() {
         builder.register_all_plugins()?

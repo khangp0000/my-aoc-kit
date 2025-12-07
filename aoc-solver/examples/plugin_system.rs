@@ -6,7 +6,8 @@
 //! Run with: cargo run --example plugin_system
 
 use aoc_solver::{
-    AocParser, AutoRegisterSolver, ParseError, RegistryBuilder, SolveError, Solver, SolverPlugin,
+    AocParser, AutoRegisterSolver, ParseError, SolveError, Solver, SolverPlugin,
+    SolverRegistryBuilder,
 };
 use std::borrow::Cow;
 
@@ -188,7 +189,7 @@ fn main() {
 
     // Scenario 1: Register ALL plugins
     println!("--- Scenario 1: Register All Plugins ---");
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();
@@ -217,7 +218,7 @@ fn main() {
 
     // Scenario 2: Register only "easy" solvers
     println!("\n--- Scenario 2: Register Only 'Easy' Solvers ---");
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_solver_plugins(|plugin| plugin.tags.contains(&"easy"))
         .expect("Failed to register plugins")
         .build();
@@ -240,7 +241,7 @@ fn main() {
 
     // Scenario 3: Register only 2023 solvers
     println!("\n--- Scenario 3: Register Only 2023 Solvers ---");
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_solver_plugins(|plugin| plugin.year == 2023)
         .expect("Failed to register plugins")
         .build();
@@ -263,7 +264,7 @@ fn main() {
 
     // Scenario 4: Mix manual registration with plugin registration
     println!("\n--- Scenario 4: Mix Manual and Plugin Registration ---");
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register(2022, 1, |input: &str| {
             // Manual registration for a custom solver
             let shared: Vec<i32> = input

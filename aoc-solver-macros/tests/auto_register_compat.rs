@@ -1,6 +1,6 @@
 use aoc_solver::{
-    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
-    Solver,
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError, Solver,
+    SolverRegistryBuilder,
 };
 use std::borrow::Cow;
 
@@ -51,12 +51,12 @@ fn test_aoc_solver_with_manual_registration() {
 #[test]
 fn test_solver_can_be_registered_manually() {
     // Test that the solver can be manually registered and used via the registry
-    let builder = RegistryBuilder::new();
+    let builder = SolverRegistryBuilder::new();
     let builder = builder
-        .register(2023, 99, |input: &str| {
+        .register(2023, 15, |input: &str| {
             let shared = <TestSolver1 as AocParser>::parse(input)?;
             Ok(Box::new(aoc_solver::SolverInstanceCow::<TestSolver1>::new(
-                2023, 99, shared,
+                2023, 15, shared,
             )))
         })
         .expect("Failed to register solver");
@@ -64,7 +64,7 @@ fn test_solver_can_be_registered_manually() {
 
     let input = "2\n3\n4";
     let mut solver = registry
-        .create_solver(2023, 99, input)
+        .create_solver(2023, 15, input)
         .expect("Failed to create solver");
 
     let answer1 = solver.solve(1).expect("Failed to solve part 1");
@@ -77,7 +77,7 @@ fn test_solver_can_be_registered_manually() {
 // Test combining both macros: AutoRegisterSolver + AocSolver
 #[derive(AocSolver, AutoRegisterSolver)]
 #[aoc_solver(max_parts = 2)]
-#[aoc(year = 2023, day = 100, tags = ["test", "combined"])]
+#[aoc(year = 2023, day = 20, tags = ["test", "combined"])]
 struct CombinedMacroSolver;
 
 impl AocParser for CombinedMacroSolver {
@@ -122,14 +122,14 @@ fn test_both_macros_work_together() {
 #[test]
 fn test_combined_solver_auto_registers() {
     // Test that the solver is automatically registered via the plugin system
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();
 
     let input = "5\n6\n7";
     let mut solver = registry
-        .create_solver(2023, 100, input)
+        .create_solver(2023, 20, input)
         .expect("Failed to create solver - was it registered?");
 
     let answer1 = solver.solve(1).expect("Failed to solve part 1");

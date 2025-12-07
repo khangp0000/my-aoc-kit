@@ -87,11 +87,11 @@ impl PartSolver<2> for Day1 {
 ### Using the Registry
 
 ```rust
-use aoc_solver::{RegistryBuilder, SolverInstanceCow};
+use aoc_solver::{SolverRegistryBuilder, SolverInstanceCow};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Auto-discover all registered solvers
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()?
         .build();
     

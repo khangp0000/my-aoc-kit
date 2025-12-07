@@ -7,7 +7,8 @@
 //! Run with: cargo run --example auto_register_macro
 
 use aoc_solver::{
-    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError,
+    SolverRegistryBuilder,
 };
 use std::borrow::Cow;
 
@@ -91,7 +92,7 @@ fn main() {
     println!("=== Auto-Register with Macro Example ===\n");
 
     // Build registry - all solvers are automatically discovered!
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();

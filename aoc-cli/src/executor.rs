@@ -5,7 +5,7 @@ use crate::cli::ParallelizeBy;
 use crate::config::Config;
 use crate::error::{ArcExecutorError, ExecutorError};
 use aoc_http_client::AocClient;
-use aoc_solver::{DynSolver, SolverFactoryRegistry};
+use aoc_solver::{DynSolver, SolverRegistry};
 use chrono::{DateTime, Local};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -46,7 +46,7 @@ pub struct WorkItem {
 
 /// Parallel executor for running solvers
 pub struct Executor {
-    registry: Arc<SolverFactoryRegistry>,
+    registry: Arc<SolverRegistry>,
     cache: Arc<InputCache>,
     client: Option<AocClient>,
     session: Arc<Zeroizing<String>>,
@@ -61,7 +61,7 @@ pub struct Executor {
 
 impl Executor {
     /// Create a new executor from config
-    pub fn new(registry: SolverFactoryRegistry, config: &Config) -> Result<Self, ExecutorError> {
+    pub fn new(registry: SolverRegistry, config: &Config) -> Result<Self, ExecutorError> {
         let client = if config.submit || !config.session.is_empty() {
             Some(AocClient::new().map_err(|e| ExecutorError::InputFetch {
                 year: 0,
@@ -183,7 +183,7 @@ impl Executor {
         work_items: Vec<WorkItem>,
         client: Option<AocClient>,
         tx: &Sender<SolverResult>,
-        registry: &Arc<SolverFactoryRegistry>,
+        registry: &Arc<SolverRegistry>,
         cache: &Arc<InputCache>,
         session: &Arc<Zeroizing<String>>,
         submit: bool,
@@ -221,7 +221,7 @@ impl Executor {
         groups: Vec<Vec<WorkItem>>,
         client: Option<AocClient>,
         tx: &Sender<SolverResult>,
-        registry: &Arc<SolverFactoryRegistry>,
+        registry: &Arc<SolverRegistry>,
         cache: &Arc<InputCache>,
         session: &Arc<Zeroizing<String>>,
         submit: bool,
@@ -314,7 +314,7 @@ fn send_result(
 fn run_solver_parallel(
     work: &WorkItem,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverFactoryRegistry>,
+    registry: &Arc<SolverRegistry>,
     cache: &Arc<InputCache>,
     client: Option<&AocClient>,
     session: &str,
@@ -351,7 +351,7 @@ fn run_solver_parts_parallel(
     work: &WorkItem,
     input: &str,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverFactoryRegistry>,
+    registry: &Arc<SolverRegistry>,
     client: Option<&AocClient>,
     session: &str,
     submit: bool,
@@ -401,7 +401,7 @@ fn run_solver_sequential(
     work: &WorkItem,
     input: &str,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverFactoryRegistry>,
+    registry: &Arc<SolverRegistry>,
     client: Option<&AocClient>,
     session: &str,
     submit: bool,

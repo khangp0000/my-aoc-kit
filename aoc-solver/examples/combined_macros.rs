@@ -5,7 +5,7 @@
 //!
 //! Run with: cargo run --example combined_macros
 
-use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, RegistryBuilder, SolveError};
+use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError, SolverRegistryBuilder};
 use std::borrow::Cow;
 
 /// Example solver using the macro
@@ -106,7 +106,7 @@ fn main() {
     println!("=== Combined Macros Example ===\n");
 
     // Build registry with all registered plugins
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();

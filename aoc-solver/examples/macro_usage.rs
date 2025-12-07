@@ -6,8 +6,8 @@
 //! Run with: cargo run --example macro_usage
 
 use aoc_solver::{
-    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, RegistryBuilder, SolveError,
-    Solver,
+    AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError, Solver,
+    SolverRegistryBuilder,
 };
 use std::borrow::Cow;
 
@@ -228,7 +228,7 @@ fn main() {
 
     // Also demonstrate using via the registry (auto-registered)
     println!("\n--- Using via Registry (auto-registered) ---");
-    let registry = RegistryBuilder::new()
+    let registry = SolverRegistryBuilder::new()
         .register_all_plugins()
         .expect("Failed to register plugins")
         .build();

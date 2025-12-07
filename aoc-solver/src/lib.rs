@@ -16,7 +16,7 @@
 //! # Quick Example
 //!
 //! ```
-//! use aoc_solver::{AocParser, ParseError, RegistryBuilder, SolveError, Solver, SolverInstanceCow};
+//! use aoc_solver::{AocParser, ParseError, SolverRegistryBuilder, SolveError, Solver, SolverInstanceCow};
 //! use std::borrow::Cow;
 //!
 //! // Define a solver
@@ -49,7 +49,7 @@
 //! }
 //!
 //! // Use the solver with builder pattern
-//! let builder = RegistryBuilder::new();
+//! let builder = SolverRegistryBuilder::new();
 //! let builder = builder.register(2023, 1, |input: &str| {
 //!     let shared = MyDay1::parse(input)?;
 //!     Ok(Box::new(SolverInstanceCow::<MyDay1>::new(2023, 1, shared)))
@@ -101,11 +101,16 @@ mod solver;
 pub use error::{ParseError, RegistrationError, SolveError, SolverError};
 pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
 pub use registry::{
-    BASE_YEAR, CAPACITY, DAYS_PER_YEAR, FactoryInfo, FactoryRegistryBuilder, MAX_YEARS,
-    RegisterableFactory, RegisterableSolver, RegistryBuilder, SolverFactory, SolverFactoryRegistry,
-    SolverFactoryStorage, SolverFactorySync, SolverPlugin, SolverRegistry,
+    BASE_YEAR, CAPACITY, DAYS_PER_YEAR, MAX_YEARS, RegisterableSolver, SolverFactory, SolverInfo,
+    SolverPlugin, SolverRegistry, SolverRegistryBuilder, SolverRegistryStorage,
 };
 pub use solver::{AocParser, PartSolver, Solver, SolverExt};
+
+// Legacy type aliases for backward compatibility
+#[deprecated(since = "0.2.0", note = "Use SolverRegistryBuilder instead")]
+pub type RegistryBuilder = SolverRegistryBuilder;
+#[deprecated(since = "0.2.0", note = "Use SolverInfo instead")]
+pub type FactoryInfo = SolverInfo;
 
 // Re-export inventory for use by the derive macro
 pub use inventory;

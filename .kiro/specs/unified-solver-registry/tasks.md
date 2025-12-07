@@ -1,0 +1,118 @@
+# Implementation Plan
+
+- [x] 1. Refactor storage and builder types
+  - [x] 1.1 Rename types and consolidate in registry.rs
+    - Rename `FactoryInfo` to `SolverInfo`
+    - Rename `FactoryEntry` to `SolverFactoryEntry`
+    - Rename `RegistryBuilder` to `SolverRegistryBuilder`
+    - Remove `SolverFactorySync`, make `SolverFactory` always Send + Sync
+    - Update all references and documentation comments
+    - _Requirements: 1.2_
+  - [x] 1.2 Consolidate `SolverRegistryBuilder` to use flat Vec storage
+    - Replace HashMap-based `solvers` field with `entries: Vec<Option<SolverFactoryEntry>>`
+    - Add `register_factory()` method with parts parameter
+    - Keep `register()` method as legacy wrapper (defaults to 2 parts)
+    - Update `build()` to produce unified `SolverRegistry`
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [x] 1.3 Consolidate error variants
+    - Replace `DuplicateSolver` and `DuplicateFactory` with `DuplicateSolverFactory`
+    - Update all error handling code
+    - _Requirements: 2.3_
+  - [ ]* 1.4 Write property test for registration preserves metadata
+    - **Property 1: Registration preserves factory metadata**
+    - **Validates: Requirements 2.2**
+  - [ ]* 1.5 Write property test for duplicate registration
+    - **Property 2: Duplicate registration fails**
+    - **Validates: Requirements 2.3**
+  - [ ]* 1.6 Write property test for out-of-bounds registration
+    - **Property 3: Out-of-bounds registration fails**
+    - **Validates: Requirements 2.4**
+
+- [x] 2. Unify registry types
+  - [x] 2.1 Merge `SolverFactoryRegistry` functionality into `SolverRegistry`
+    - Add `storage: SolverRegistryStorage` field to `SolverRegistry`
+    - Add `storage()` accessor method
+    - Update `create_solver()` to use flat Vec lookup with `InvalidYearDay` error
+    - _Requirements: 1.1, 3.1, 4.1, 4.2, 4.3, 4.4_
+  - [x] 2.2 Remove `SolverFactoryRegistry` and `FactoryRegistryBuilder` types
+    - Delete the struct definitions
+    - Remove from public exports in lib.rs
+    - _Requirements: 1.3, 1.4_
+  - [ ]* 2.3 Write property test for solver creation
+    - **Property 7: Solver creation invokes factory**
+    - **Validates: Requirements 4.1**
+  - [ ]* 2.4 Write property test for unregistered solver
+    - **Property 8: Unregistered solver returns NotFound**
+    - **Validates: Requirements 4.2**
+  - [ ]* 2.5 Write property test for out-of-bounds solver creation
+    - **Property 9: Out-of-bounds solver creation fails**
+    - **Validates: Requirements 4.3**
+  - [ ]* 2.6 Write property test for parse error wrapping
+    - **Property 10: Parse errors are wrapped**
+    - **Validates: Requirements 4.4**
+
+- [x] 3. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Update storage iteration and lookup methods
+  - [x] 4.1 Ensure `SolverRegistryStorage` methods work correctly
+    - Verify `iter_info()` yields items in ascending (year, day) order
+    - Verify `get_info()`, `contains()`, `len()`, `is_empty()` work correctly
+    - _Requirements: 3.2, 3.3, 3.4, 3.5, 3.6_
+  - [ ]* 4.2 Write property test for iteration ordering
+    - **Property 4: Iteration ordering**
+    - **Validates: Requirements 3.2**
+  - [ ]* 4.3 Write property test for lookup consistency
+    - **Property 5: Lookup consistency**
+    - **Validates: Requirements 3.3, 3.4**
+  - [ ]* 4.4 Write property test for count consistency
+    - **Property 6: Count consistency**
+    - **Validates: Requirements 3.5, 3.6**
+
+- [x] 5. Update plugin system integration
+  - [x] 5.1 Consolidate `RegisterableSolver` and `RegisterableFactory` traits
+    - Remove `RegisterableFactory` trait
+    - Update `RegisterableSolver` to include `parts()` method
+    - Update `register_with()` to work with `SolverRegistryBuilder`
+    - _Requirements: 5.3_
+  - [x] 5.2 Update plugin registration methods
+    - Update `register_all_plugins()` to use unified builder
+    - Update `register_solver_plugins()` to use unified builder
+    - Remove temporary registry workaround in `register_plugin()`
+    - _Requirements: 5.1, 5.2, 5.4_
+
+- [x] 6. Update macro and public exports
+  - [x] 6.1 Update `register_solver!` macro
+    - Ensure macro works with unified `SolverRegistryBuilder`
+    - _Requirements: 6.1, 6.2_
+  - [x] 6.2 Update lib.rs exports
+    - Export `SolverRegistry`, `SolverRegistryStorage`, `SolverRegistryBuilder`
+    - Export `SolverFactory`, `SolverInfo`, `RegisterableSolver`, `SolverPlugin`
+    - Remove exports for deleted types (`SolverFactorySync`, `FactoryInfo`, `RegisterableFactory`, `FactoryRegistryBuilder`, `SolverFactoryRegistry`)
+    - _Requirements: 1.1, 1.3, 1.4_
+
+- [x] 7. Update dependent code
+  - [x] 7.1 Update aoc-cli executor to use unified registry
+    - Update imports in executor.rs
+    - Verify `SolverFactoryRegistry` references are replaced with `SolverRegistry`
+    - _Requirements: 1.1_
+  - [x] 7.2 Update examples to use unified registry
+    - Update plugin_system.rs example
+    - Update other examples as needed
+    - _Requirements: 1.1_
+
+- [x] 8. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Final cleanup
+  - [x] 9.1 Remove dead code and unused imports
+    - Clean up any remaining references to old types
+    - Remove unused helper functions
+    - _Requirements: 1.3, 1.4_
+  - [x] 9.2 Update documentation
+    - Update module-level documentation in registry.rs
+    - Update README if needed
+    - _Requirements: 1.1_
+
+- [x] 10. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

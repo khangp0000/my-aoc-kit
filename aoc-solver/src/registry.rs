@@ -1,8 +1,40 @@
-//! Solver registry for managing and creating solver instances
+//! Unified solver registry for managing and creating solver instances.
+//!
+//! This module provides a single registry system for Advent of Code solvers:
+//!
+//! - [`SolverRegistry`] - The immutable registry for looking up and creating solvers
+//! - [`SolverRegistryBuilder`] - Builder pattern for constructing registries
+//! - [`SolverRegistryStorage`] - Internal storage with efficient year/day indexing
+//! - [`SolverFactory`] - Thread-safe factory function type (always Send + Sync)
+//! - [`SolverInfo`] - Metadata about registered solvers
+//! - [`RegisterableSolver`] - Trait for self-registering solvers
+//! - [`SolverPlugin`] - Plugin system for automatic solver discovery
+//!
+//! # Storage Layout
+//!
+//! The registry uses a flat `Vec<Option<SolverFactoryEntry>>` with capacity for
+//! 20 years × 25 days = 500 entries. Index calculation: `(year - 2015) * 25 + (day - 1)`.
+//! This provides O(1) lookup and maintains ordering for iteration.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use aoc_solver::SolverRegistryBuilder;
+//!
+//! let registry = SolverRegistryBuilder::new()
+//!     .register_all_plugins()
+//!     .expect("Failed to register plugins")
+//!     .build();
+//!
+//! // Create and use a solver
+//! if let Ok(mut solver) = registry.create_solver(2023, 1, "input data") {
+//!     let answer = solver.solve(1).expect("Failed to solve");
+//!     println!("Answer: {}", answer);
+//! }
+//! ```
 
 use crate::error::{ParseError, RegistrationError, SolverError};
 use crate::instance::{DynSolver, SolverInstanceCow};
-use std::collections::HashMap;
 
 // ============================================================================
 // Storage Constants and Index Calculation
@@ -43,17 +75,13 @@ fn from_index(index: usize) -> (u16, u8) {
 // Factory Types
 // ============================================================================
 
-/// Factory function type for creating solver instances (legacy, not thread-safe)
-pub type SolverFactory =
-    Box<dyn for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>>;
-
 /// Thread-safe factory function type for creating solver instances
-pub type SolverFactorySync =
+pub type SolverFactory =
     Box<dyn for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError> + Send + Sync>;
 
-/// Metadata about a registered solver factory
+/// Metadata about a registered solver
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FactoryInfo {
+pub struct SolverInfo {
     /// The Advent of Code year
     pub year: u16,
     /// The day number (1-25)
@@ -62,9 +90,9 @@ pub struct FactoryInfo {
     pub parts: u8,
 }
 
-/// Factory entry with metadata (uses thread-safe factory)
+/// Factory entry with metadata
 struct SolverFactoryEntry {
-    factory: SolverFactorySync,
+    factory: SolverFactory,
     parts: u8,
 }
 
@@ -77,29 +105,69 @@ struct SolverFactoryEntry {
 /// # Example
 ///
 /// ```ignore
-/// # use aoc_solver::RegistryBuilder;
-/// let registry = RegistryBuilder::new()
+/// # use aoc_solver::SolverRegistryBuilder;
+/// let registry = SolverRegistryBuilder::new()
 ///     .register(2023, 1, |input| { /* ... */ Ok(Box::new(/* solver */)) })
 ///     .unwrap()
 ///     .register(2023, 2, |input| { /* ... */ Ok(Box::new(/* solver */)) })
 ///     .unwrap()
 ///     .build();
 /// ```
-pub struct RegistryBuilder {
-    solvers: HashMap<(u16, u8), SolverFactory>,
+pub struct SolverRegistryBuilder {
+    entries: Vec<Option<SolverFactoryEntry>>,
 }
 
-impl RegistryBuilder {
-    /// Create a new empty registry builder
+impl SolverRegistryBuilder {
+    /// Create a new empty registry builder with pre-allocated storage
     pub fn new() -> Self {
         Self {
-            solvers: HashMap::new(),
+            entries: (0..CAPACITY).map(|_| None).collect(),
         }
     }
 
-    /// Register a solver factory function for a specific year and day
+    /// Register a solver factory with explicit parts count
     ///
-    /// Returns an error if a solver is already registered for the given year-day combination.
+    /// Returns error if year/day is out of bounds or already registered.
+    ///
+    /// # Arguments
+    /// * `year` - The Advent of Code year (2015-2034)
+    /// * `day` - The day number (1-25)
+    /// * `parts` - Number of parts this solver supports
+    /// * `factory` - A function that takes input and returns a boxed DynSolver
+    ///
+    /// # Returns
+    /// * `Ok(&mut Self)` - Builder with the solver registered, ready for chaining
+    /// * `Err(RegistrationError)` - Invalid year/day or duplicate registration
+    pub fn register_factory<F>(
+        &mut self,
+        year: u16,
+        day: u8,
+        parts: u8,
+        factory: F,
+    ) -> Result<&mut Self, RegistrationError>
+    where
+        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let index = calc_index(year, day).ok_or(RegistrationError::InvalidYearDay(year, day))?;
+
+        if self.entries[index].is_some() {
+            return Err(RegistrationError::DuplicateSolverFactory(year, day));
+        }
+
+        self.entries[index] = Some(SolverFactoryEntry {
+            factory: Box::new(factory),
+            parts,
+        });
+        Ok(self)
+    }
+
+    /// Register a solver factory function for a specific year and day (legacy wrapper)
+    ///
+    /// This is a convenience method that defaults to 2 parts (standard AoC).
+    /// For explicit parts count, use `register_factory()`.
     ///
     /// # Arguments
     /// * `year` - The Advent of Code year
@@ -108,15 +176,15 @@ impl RegistryBuilder {
     ///
     /// # Returns
     /// * `Ok(Self)` - Builder with the solver registered, ready for chaining
-    /// * `Err(RegistrationError)` - Duplicate solver for this year-day combination
+    /// * `Err(RegistrationError)` - Invalid year/day or duplicate registration
     pub fn register<F>(mut self, year: u16, day: u8, factory: F) -> Result<Self, RegistrationError>
     where
-        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError> + 'static,
+        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>
+            + Send
+            + Sync
+            + 'static,
     {
-        if self.solvers.contains_key(&(year, day)) {
-            return Err(RegistrationError::DuplicateSolver(year, day));
-        }
-        self.solvers.insert((year, day), Box::new(factory));
+        self.register_factory(year, day, 2, factory)?;
         Ok(self)
     }
 
@@ -128,8 +196,8 @@ impl RegistryBuilder {
     /// # Example
     ///
     /// ```no_run
-    /// # use aoc_solver::RegistryBuilder;
-    /// let registry = RegistryBuilder::new()
+    /// # use aoc_solver::SolverRegistryBuilder;
+    /// let registry = SolverRegistryBuilder::new()
     ///     .register_all_plugins()
     ///     .unwrap()
     ///     .build();
@@ -140,7 +208,7 @@ impl RegistryBuilder {
     /// * `Err(RegistrationError)` - Duplicate solver found
     pub fn register_all_plugins(mut self) -> Result<Self, RegistrationError> {
         for plugin in inventory::iter::<SolverPlugin>() {
-            self = plugin.solver.register_with(self, plugin.year, plugin.day)?;
+            plugin.solver.register_with(&mut self, plugin.year, plugin.day)?;
         }
         Ok(self)
     }
@@ -154,9 +222,9 @@ impl RegistryBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// # use aoc_solver::RegistryBuilder;
+    /// # use aoc_solver::SolverRegistryBuilder;
     /// // Register only solvers tagged as "easy"
-    /// let registry = RegistryBuilder::new()
+    /// let registry = SolverRegistryBuilder::new()
     ///     .register_solver_plugins(|plugin| {
     ///         plugin.tags.contains(&"easy")
     ///     })
@@ -164,7 +232,7 @@ impl RegistryBuilder {
     ///     .build();
     ///
     /// // Register only 2023 solvers
-    /// let registry = RegistryBuilder::new()
+    /// let registry = SolverRegistryBuilder::new()
     ///     .register_solver_plugins(|plugin| plugin.year == 2023)
     ///     .unwrap()
     ///     .build();
@@ -182,7 +250,7 @@ impl RegistryBuilder {
     {
         for plugin in inventory::iter::<SolverPlugin>() {
             if filter(plugin) {
-                self = plugin.solver.register_with(self, plugin.year, plugin.day)?;
+                plugin.solver.register_with(&mut self, plugin.year, plugin.day)?;
             }
         }
         Ok(self)
@@ -194,12 +262,14 @@ impl RegistryBuilder {
     /// be used for solver lookup and creation.
     pub fn build(self) -> SolverRegistry {
         SolverRegistry {
-            solvers: self.solvers,
+            storage: SolverRegistryStorage {
+                entries: self.entries,
+            },
         }
     }
 }
 
-impl Default for RegistryBuilder {
+impl Default for SolverRegistryBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -213,16 +283,21 @@ impl Default for RegistryBuilder {
 /// # Example
 ///
 /// ```no_run
-/// # use aoc_solver::{RegistryBuilder, SolverRegistry};
-/// let registry = RegistryBuilder::new().build();
+/// # use aoc_solver::{SolverRegistryBuilder, SolverRegistry};
+/// let registry = SolverRegistryBuilder::new().build();
 /// // Can only create solvers, not register new ones
 /// // let solver = registry.create_solver(2023, 1, "input data").unwrap();
 /// ```
 pub struct SolverRegistry {
-    solvers: HashMap<(u16, u8), SolverFactory>,
+    storage: SolverRegistryStorage,
 }
 
 impl SolverRegistry {
+    /// Get readonly access to the storage for iteration/lookup
+    pub fn storage(&self) -> &SolverRegistryStorage {
+        &self.storage
+    }
+
     /// Create a solver instance for a specific year and day
     ///
     /// # Arguments
@@ -232,19 +307,23 @@ impl SolverRegistry {
     ///
     /// # Returns
     /// * `Ok(Box<dyn DynSolver>)` - Successfully created solver
-    /// * `Err(SolverError)` - Solver not found or parsing failed
+    /// * `Err(SolverError)` - Solver not found, invalid year/day, or parsing failed
     pub fn create_solver<'a>(
         &self,
         year: u16,
         day: u8,
         input: &'a str,
     ) -> Result<Box<dyn DynSolver + 'a>, SolverError> {
-        let factory = self
-            .solvers
-            .get(&(year, day))
+        let index = calc_index(year, day).ok_or(SolverError::InvalidYearDay(year, day))?;
+
+        let entry = self
+            .storage
+            .entries
+            .get(index)
+            .and_then(|e| e.as_ref())
             .ok_or(SolverError::NotFound(year, day))?;
 
-        factory(input).map_err(SolverError::ParseError)
+        (entry.factory)(input).map_err(SolverError::ParseError)
     }
 }
 
@@ -264,7 +343,7 @@ impl SolverRegistry {
 /// # Example
 ///
 /// ```no_run
-/// use aoc_solver::{AocParser, ParseError, RegisterableSolver, RegistryBuilder, SolveError, Solver};
+/// use aoc_solver::{AocParser, ParseError, RegisterableSolver, SolverRegistryBuilder, SolveError, Solver};
 /// use std::borrow::Cow;
 ///
 /// struct MyDay1;
@@ -286,8 +365,8 @@ impl SolverRegistry {
 /// }
 ///
 /// let solver = MyDay1;
-/// let builder = RegistryBuilder::new();
-/// let builder = solver.register_with(builder, 2023, 1).unwrap();
+/// let mut builder = SolverRegistryBuilder::new();
+/// solver.register_with(&mut builder, 2023, 1).unwrap();
 /// let registry = builder.build();
 /// ```
 pub trait RegisterableSolver: Sync {
@@ -299,14 +378,17 @@ pub trait RegisterableSolver: Sync {
     /// * `day` - The day number (1-25)
     ///
     /// # Returns
-    /// * `Ok(RegistryBuilder)` - Builder with the solver registered
-    /// * `Err(RegistrationError)` - Duplicate solver for this year-day combination
-    fn register_with(
+    /// * `Ok(&mut SolverRegistryBuilder)` - Builder with the solver registered
+    /// * `Err(RegistrationError)` - Duplicate solver or invalid year/day
+    fn register_with<'a>(
         &self,
-        builder: RegistryBuilder,
+        builder: &'a mut SolverRegistryBuilder,
         year: u16,
         day: u8,
-    ) -> Result<RegistryBuilder, RegistrationError>;
+    ) -> Result<&'a mut SolverRegistryBuilder, RegistrationError>;
+
+    /// Get the number of parts this solver supports
+    fn parts(&self) -> u8;
 }
 
 /// Blanket implementation of RegisterableSolver for all Solver types
@@ -317,44 +399,12 @@ impl<S> RegisterableSolver for S
 where
     S: crate::solver::Solver + Sync + 'static,
 {
-    fn register_with(
+    fn register_with<'a>(
         &self,
-        builder: RegistryBuilder,
+        builder: &'a mut SolverRegistryBuilder,
         year: u16,
         day: u8,
-    ) -> Result<RegistryBuilder, RegistrationError> {
-        builder.register(year, day, move |input: &str| {
-            let shared = S::parse(input)?;
-            Ok(Box::new(SolverInstanceCow::<S>::new(year, day, shared)))
-        })
-    }
-}
-
-/// Trait for solvers that can register themselves with the new FactoryRegistryBuilder
-pub trait RegisterableFactory: Sync {
-    /// Register this solver type with the factory builder
-    fn register_factory_with(
-        &self,
-        builder: FactoryRegistryBuilder,
-        year: u16,
-        day: u8,
-    ) -> Result<FactoryRegistryBuilder, RegistrationError>;
-
-    /// Get the number of parts this solver supports
-    fn parts(&self) -> u8;
-}
-
-/// Blanket implementation of RegisterableFactory for all Solver types
-impl<S> RegisterableFactory for S
-where
-    S: crate::solver::Solver + Sync + 'static,
-{
-    fn register_factory_with(
-        &self,
-        builder: FactoryRegistryBuilder,
-        year: u16,
-        day: u8,
-    ) -> Result<FactoryRegistryBuilder, RegistrationError> {
+    ) -> Result<&'a mut SolverRegistryBuilder, RegistrationError> {
         builder.register_factory(year, day, S::PARTS, move |input: &str| {
             let shared = S::parse(input)?;
             Ok(Box::new(SolverInstanceCow::<S>::new(year, day, shared)))
@@ -423,13 +473,10 @@ inventory::collect!(SolverPlugin);
 /// This macro simplifies the registration process by automatically creating
 /// a factory function that parses input and wraps the result in a SolverInstance.
 ///
-/// Note: This macro is kept for backward compatibility but now works with the
-/// mutable registry pattern. For new code, consider using the builder pattern directly.
-///
 /// # Example
 ///
 /// ```
-/// use aoc_solver::{AocParser, register_solver, ParseError, RegistryBuilder, SolveError, Solver, SolverRegistry};
+/// use aoc_solver::{AocParser, register_solver, ParseError, SolverRegistryBuilder, SolveError, Solver, SolverRegistry};
 /// use std::borrow::Cow;
 ///
 /// struct MyDay1Solver;
@@ -450,16 +497,15 @@ inventory::collect!(SolverPlugin);
 ///     }
 /// }
 ///
-/// // Old style (still works for backward compatibility)
-/// let mut builder = RegistryBuilder::new();
+/// let mut builder = SolverRegistryBuilder::new();
 /// register_solver!(builder, MyDay1Solver, 2023, 1);
 /// let registry = builder.build();
 /// ```
 #[macro_export]
 macro_rules! register_solver {
     ($builder:expr, $solver:ty, $year:expr, $day:expr) => {
-        $builder = $builder
-            .register($year, $day, |input: &str| {
+        $builder
+            .register_factory($year, $day, <$solver>::PARTS, |input: &str| {
                 let shared = <$solver>::parse(input)?;
                 Ok(Box::new($crate::SolverInstanceCow::<$solver>::new(
                     $year, $day, shared,
@@ -485,20 +531,20 @@ macro_rules! register_solver {
 /// in ascending (year, day) order. This is a contract that consumers rely on
 /// for grouping operations like `chunk_by`. Any alternative storage implementation
 /// must maintain this ordering invariant.
-pub struct SolverFactoryStorage {
+pub struct SolverRegistryStorage {
     entries: Vec<Option<SolverFactoryEntry>>,
 }
 
-impl SolverFactoryStorage {
+impl SolverRegistryStorage {
     /// Iterate over metadata for all registered factories.
     ///
     /// Items are yielded in ascending (year, day) order. This ordering is
     /// guaranteed and can be relied upon for grouping operations like `chunk_by`.
-    pub fn iter_info(&self) -> impl Iterator<Item = FactoryInfo> + '_ {
+    pub fn iter_info(&self) -> impl Iterator<Item = SolverInfo> + '_ {
         self.entries.iter().enumerate().filter_map(|(i, entry)| {
             entry.as_ref().map(|e| {
                 let (year, day) = from_index(i);
-                FactoryInfo {
+                SolverInfo {
                     year,
                     day,
                     parts: e.parts,
@@ -508,10 +554,10 @@ impl SolverFactoryStorage {
     }
 
     /// Get metadata for a specific factory
-    pub fn get_info(&self, year: u16, day: u8) -> Option<FactoryInfo> {
+    pub fn get_info(&self, year: u16, day: u8) -> Option<SolverInfo> {
         calc_index(year, day)
             .and_then(|i| self.entries.get(i)?.as_ref())
-            .map(|e| FactoryInfo {
+            .map(|e| SolverInfo {
                 year,
                 day,
                 parts: e.parts,
@@ -527,12 +573,12 @@ impl SolverFactoryStorage {
     ///
     /// Items are yielded in ascending (year, day) order. This ordering is
     /// guaranteed and can be relied upon for grouping operations like `chunk_by`.
-    pub fn iter_factories(&self) -> impl Iterator<Item = (FactoryInfo, &SolverFactorySync)> + '_ {
+    pub fn iter_factories(&self) -> impl Iterator<Item = (SolverInfo, &SolverFactory)> + '_ {
         self.entries.iter().enumerate().filter_map(|(i, entry)| {
             entry.as_ref().map(|e| {
                 let (year, day) = from_index(i);
                 (
-                    FactoryInfo {
+                    SolverInfo {
                         year,
                         day,
                         parts: e.parts,
@@ -554,145 +600,4 @@ impl SolverFactoryStorage {
     }
 }
 
-/// Builder for constructing a SolverFactoryRegistry with flat Vec storage
-pub struct FactoryRegistryBuilder {
-    entries: Vec<Option<SolverFactoryEntry>>,
-}
 
-impl FactoryRegistryBuilder {
-    /// Create a new empty registry builder with pre-allocated storage
-    pub fn new() -> Self {
-        Self {
-            entries: (0..CAPACITY).map(|_| None).collect(),
-        }
-    }
-
-    /// Register a solver factory with explicit parts count
-    ///
-    /// Returns error if year/day is out of bounds or already registered.
-    pub fn register_factory<F>(
-        mut self,
-        year: u16,
-        day: u8,
-        parts: u8,
-        factory: F,
-    ) -> Result<Self, RegistrationError>
-    where
-        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>
-            + Send
-            + Sync
-            + 'static,
-    {
-        let index = calc_index(year, day).ok_or(RegistrationError::InvalidYearDay(year, day))?;
-
-        if self.entries[index].is_some() {
-            return Err(RegistrationError::DuplicateFactory(year, day));
-        }
-
-        self.entries[index] = Some(SolverFactoryEntry {
-            factory: Box::new(factory),
-            parts,
-        });
-        Ok(self)
-    }
-
-    /// Register all collected solver plugins
-    pub fn register_all_plugins(mut self) -> Result<Self, RegistrationError> {
-        for plugin in inventory::iter::<SolverPlugin>() {
-            self = self.register_plugin(plugin)?;
-        }
-        Ok(self)
-    }
-
-    /// Register solver plugins that match the given filter predicate
-    pub fn register_solver_plugins<F>(mut self, filter: F) -> Result<Self, RegistrationError>
-    where
-        F: Fn(&SolverPlugin) -> bool,
-    {
-        for plugin in inventory::iter::<SolverPlugin>() {
-            if filter(plugin) {
-                self = self.register_plugin(plugin)?;
-            }
-        }
-        Ok(self)
-    }
-
-    /// Register a single plugin using the legacy RegisterableSolver trait
-    fn register_plugin(self, plugin: &SolverPlugin) -> Result<Self, RegistrationError> {
-        // For now, default to 2 parts (standard AoC) since we can't get it from RegisterableSolver
-        let parts = 2u8;
-
-        let year = plugin.year;
-        let day = plugin.day;
-        let solver = plugin.solver;
-
-        self.register_factory(year, day, parts, move |input: &str| {
-            // Use the RegisterableSolver to create the solver via temp registry
-            let temp_builder = RegistryBuilder::new();
-            let temp_builder = solver
-                .register_with(temp_builder, year, day)
-                .map_err(|e| ParseError::Other(e.to_string()))?;
-            let temp_registry = temp_builder.build();
-            temp_registry
-                .create_solver(year, day, input)
-                .map_err(|e| match e {
-                    SolverError::ParseError(pe) => pe,
-                    _ => ParseError::Other(e.to_string()),
-                })
-        })
-    }
-
-    /// Build the immutable registry
-    pub fn build(self) -> SolverFactoryRegistry {
-        SolverFactoryRegistry {
-            storage: SolverFactoryStorage {
-                entries: self.entries,
-            },
-        }
-    }
-}
-
-impl Default for FactoryRegistryBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Registry wrapping storage with solver creation method
-pub struct SolverFactoryRegistry {
-    storage: SolverFactoryStorage,
-}
-
-impl SolverFactoryRegistry {
-    /// Get readonly access to the factory storage for iteration/lookup
-    pub fn storage(&self) -> &SolverFactoryStorage {
-        &self.storage
-    }
-
-    /// Create a solver instance by invoking the factory for a specific year/day
-    pub fn create_solver<'a>(
-        &self,
-        year: u16,
-        day: u8,
-        input: &'a str,
-    ) -> Result<Box<dyn DynSolver + 'a>, SolverError> {
-        let index = calc_index(year, day).ok_or(SolverError::InvalidYearDay(year, day))?;
-
-        let entry = self
-            .storage
-            .entries
-            .get(index)
-            .and_then(|e| e.as_ref())
-            .ok_or(SolverError::NotFound(year, day))?;
-
-        (entry.factory)(input).map_err(SolverError::ParseError)
-    }
-}
-
-impl Clone for SolverFactoryRegistry {
-    fn clone(&self) -> Self {
-        // We can't clone the factories, so we need to rebuild
-        // This is a limitation - for now, wrap in Arc for sharing
-        panic!("SolverFactoryRegistry cannot be cloned directly. Wrap in Arc for sharing.")
-    }
-}

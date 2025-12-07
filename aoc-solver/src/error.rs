@@ -50,12 +50,9 @@ pub enum SolverError {
 /// Error type for registration failures
 #[derive(Debug, Clone, Error)]
 pub enum RegistrationError {
-    /// Attempted to register a solver for a year-day combination that already exists
-    #[error("Duplicate solver registration for year {0} day {1}")]
-    DuplicateSolver(u16, u8),
-    /// Attempted to register a factory for a year-day combination that already exists
-    #[error("Duplicate factory registration for year {0} day {1}")]
-    DuplicateFactory(u16, u8),
+    /// Attempted to register a solver factory for a year-day combination that already exists
+    #[error("Duplicate solver factory registration for year {0} day {1}")]
+    DuplicateSolverFactory(u16, u8),
     /// Invalid year/day combination (out of supported range)
     #[error("Invalid year/day: year {0} day {1} (valid: 2015-2034, days 1-25)")]
     InvalidYearDay(u16, u8),
