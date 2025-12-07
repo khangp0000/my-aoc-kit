@@ -150,32 +150,30 @@ pub fn derive_auto_register_solver(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// use aoc_solver::{AocParser, PartSolver, ParseError, SolveError};
 /// use aoc_solver_macros::AocSolver;
-/// use std::borrow::Cow;
 ///
 /// #[derive(AocSolver)]
 /// #[aoc_solver(max_parts = 2)]
 /// struct Day1;
 ///
 /// impl AocParser for Day1 {
-///     type SharedData = Vec<i32>;
+///     type SharedData<'a> = Vec<i32>;
 ///
-///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         let numbers: Vec<i32> = input
+///     fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         input
 ///             .lines()
 ///             .map(|l| l.parse().map_err(|_| ParseError::InvalidFormat("bad int".into())))
-///             .collect::<Result<_, _>>()?;
-///         Ok(Cow::Owned(numbers))
+///             .collect()
 ///     }
 /// }
 ///
 /// impl PartSolver<1> for Day1 {
-///     fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+///     fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
 ///         Ok(shared.iter().sum::<i32>().to_string())
 ///     }
 /// }
 ///
 /// impl PartSolver<2> for Day1 {
-///     fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+///     fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
 ///         Ok(shared.iter().product::<i32>().to_string())
 ///     }
 /// }
@@ -231,7 +229,7 @@ pub fn derive_aoc_solver(input: TokenStream) -> TokenStream {
             const PARTS: u8 = #max_parts;
 
             fn solve_part(
-                shared: &mut std::borrow::Cow<'_, Self::SharedData>,
+                shared: &mut Self::SharedData<'_>,
                 part: u8,
             ) -> Result<String, ::aoc_solver::SolveError> {
                 match part {

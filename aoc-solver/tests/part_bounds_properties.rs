@@ -4,23 +4,22 @@
 
 use aoc_solver::{AocParser, ParseError, SolveError, Solver, SolverExt};
 use proptest::prelude::*;
-use std::borrow::Cow;
 
 /// Test solver with configurable PARTS
 struct TestSolver<const N: u8>;
 
 impl<const N: u8> AocParser for TestSolver<N> {
-    type SharedData = ();
+    type SharedData<'a> = ();
 
-    fn parse(_input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-        Ok(Cow::Owned(()))
+    fn parse(_input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+        Ok(())
     }
 }
 
 impl<const N: u8> Solver for TestSolver<N> {
     const PARTS: u8 = N;
 
-    fn solve_part(_shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
+    fn solve_part(_shared: &mut Self::SharedData<'_>, part: u8) -> Result<String, SolveError> {
         Ok(format!("part{}", part))
     }
 }
@@ -34,7 +33,7 @@ proptest! {
     /// **Validates: Requirements 2.1, 2.2**
     #[test]
     fn prop_out_of_range_rejection(max_parts in 1u8..=25, part in 0u8..=255) {
-        let mut shared: Cow<'_, ()> = Cow::Owned(());
+        let mut shared = ();
 
         // Test with different PARTS values
         let result = match max_parts {
@@ -69,8 +68,8 @@ proptest! {
     /// **Validates: Requirements 2.3**
     #[test]
     fn prop_valid_range_delegation(part in 1u8..=2) {
-        let mut shared: Cow<'_, ()> = Cow::Owned(());
-        let mut shared2: Cow<'_, ()> = Cow::Owned(());
+        let mut shared = ();
+        let mut shared2 = ();
 
         // Test that valid parts delegate correctly
         let checked_result = TestSolver::<2>::solve_part_checked_range(&mut shared, part);
@@ -89,21 +88,21 @@ mod unit_tests {
 
     #[test]
     fn test_part_zero_rejected() {
-        let mut shared: Cow<'_, ()> = Cow::Owned(());
+        let mut shared = ();
         let result = TestSolver::<2>::solve_part_checked_range(&mut shared, 0);
         assert!(matches!(result, Err(SolveError::PartOutOfRange(0))));
     }
 
     #[test]
     fn test_part_exceeds_max_rejected() {
-        let mut shared: Cow<'_, ()> = Cow::Owned(());
+        let mut shared = ();
         let result = TestSolver::<2>::solve_part_checked_range(&mut shared, 3);
         assert!(matches!(result, Err(SolveError::PartOutOfRange(3))));
     }
 
     #[test]
     fn test_valid_part_succeeds() {
-        let mut shared: Cow<'_, ()> = Cow::Owned(());
+        let mut shared = ();
         let result = TestSolver::<2>::solve_part_checked_range(&mut shared, 1);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "part1");

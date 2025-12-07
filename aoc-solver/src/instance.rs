@@ -2,51 +2,25 @@
 
 use crate::error::SolveError;
 use crate::solver::{Solver, SolverExt};
-use std::borrow::Cow;
-use std::ops::Deref;
 
 /// A solver instance for a specific problem with shared data
 ///
 /// Manages the state for solving a specific year-day problem, including:
 /// - The shared data (parsed input and intermediate results)
-pub struct SolverInstanceCow<'a, S: Solver> {
+pub struct SolverInstance<'a, S: Solver> {
     year: u16,
     day: u8,
-    shared: Cow<'a, S::SharedData>,
+    shared: S::SharedData<'a>,
 }
 
-impl<S: Solver> SolverInstanceCow<'_, S> {
-    /// Convert a borrowed solver instance to an owned one
-    ///
-    /// This is useful when you need to extend the lifetime of a solver instance
-    /// beyond the lifetime of the input data.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let borrowed_solver = registry.create_solver(2023, 1, input)?;
-    /// let owned_solver = borrowed_solver.into_owned();
-    /// // owned_solver can now outlive the input string
-    /// ```
-    pub fn into_owned(&self) -> SolverInstance<S> {
-        SolverInstanceCow {
-            year: self.year,
-            day: self.day,
-            shared: Cow::Owned(self.shared.deref().to_owned()),
-        }
-    }
-}
-
-pub type SolverInstance<S> = SolverInstanceCow<'static, S>;
-
-impl<'a, S: Solver> SolverInstanceCow<'a, S> {
+impl<'b, 'a, S: Solver> SolverInstance<'a, S> {
     /// Create a new solver instance
     ///
     /// # Arguments
     /// * `year` - The Advent of Code year
     /// * `day` - The day number (1-25)
     /// * `shared` - The shared data (parsed input)
-    pub fn new(year: u16, day: u8, shared: Cow<'a, S::SharedData>) -> Self {
+    pub fn new(year: u16, day: u8, shared: S::SharedData<'a>) -> Self {
         Self { year, day, shared }
     }
 }
@@ -95,7 +69,7 @@ pub trait DynSolver {
     fn parts(&self) -> u8;
 }
 
-impl<'a, S: SolverExt> DynSolver for SolverInstanceCow<'a, S> {
+impl<'a, 'b, S: SolverExt> DynSolver for SolverInstance<'a, S> {
     fn solve(&mut self, part: u8) -> Result<String, SolveError> {
         S::solve_part_checked_range(&mut self.shared, part)
     }

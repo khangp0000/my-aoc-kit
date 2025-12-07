@@ -16,21 +16,19 @@
 //! # Quick Example
 //!
 //! ```
-//! use aoc_solver::{AocParser, ParseError, SolverRegistryBuilder, SolveError, Solver, SolverInstanceCow};
-//! use std::borrow::Cow;
+//! use aoc_solver::{AocParser, ParseError, SolverRegistryBuilder, SolveError, Solver, SolverInstance};
 //!
 //! // Define a solver
 //! pub struct MyDay1;
 //!
 //! impl AocParser for MyDay1 {
-//!     type SharedData = Vec<i32>;
+//!     type SharedData<'a> = Vec<i32>;
 //!     
-//!     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+//!     fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
 //!         input.lines()
 //!             .map(|line| line.parse().map_err(|_|
 //!                 ParseError::InvalidFormat("Expected integer".to_string())))
-//!             .collect::<Result<Vec<_>, _>>()
-//!             .map(Cow::Owned)
+//!             .collect()
 //!     }
 //! }
 //!
@@ -38,7 +36,7 @@
 //!     const PARTS: u8 = 1;
 //!     
 //!     fn solve_part(
-//!         shared: &mut Cow<'_, Self::SharedData>,
+//!         shared: &mut Self::SharedData<'_>,
 //!         part: u8,
 //!     ) -> Result<String, SolveError> {
 //!         match part {
@@ -52,7 +50,7 @@
 //! let mut builder = SolverRegistryBuilder::new();
 //! builder.register(2023, 1, 2, |input: &str| {
 //!     let shared = MyDay1::parse(input)?;
-//!     Ok(Box::new(SolverInstanceCow::<MyDay1>::new(2023, 1, shared)))
+//!     Ok(Box::new(SolverInstance::<MyDay1>::new(2023, 1, shared)))
 //! }).unwrap();
 //! let registry = builder.build();
 //!
@@ -99,7 +97,7 @@ mod solver;
 
 // Re-export public API
 pub use error::{ParseError, RegistrationError, SolveError, SolverError};
-pub use instance::{DynSolver, SolverInstance, SolverInstanceCow};
+pub use instance::{DynSolver, SolverInstance};
 pub use registry::{
     BASE_YEAR, CAPACITY, DAYS_PER_YEAR, MAX_YEARS, RegisterableSolver, SolverFactory, SolverInfo,
     SolverPlugin, SolverRegistry, SolverRegistryBuilder, SolverRegistryStorage,

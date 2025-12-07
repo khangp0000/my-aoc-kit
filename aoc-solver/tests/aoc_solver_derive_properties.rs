@@ -5,7 +5,6 @@
 
 use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError, Solver};
 use proptest::prelude::*;
-use std::borrow::Cow;
 
 // Test solver for property tests
 #[derive(AocSolver)]
@@ -13,29 +12,28 @@ use std::borrow::Cow;
 struct TestSolver;
 
 impl AocParser for TestSolver {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-        let numbers: Vec<i32> = input
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+        input
             .lines()
             .filter(|l| !l.is_empty())
             .map(|l| {
                 l.parse()
                     .map_err(|_| ParseError::InvalidFormat("bad int".into()))
             })
-            .collect::<Result<_, _>>()?;
-        Ok(Cow::Owned(numbers))
+            .collect()
     }
 }
 
 impl PartSolver<1> for TestSolver {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for TestSolver {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -105,40 +103,38 @@ mod property_2_invalid_part_rejection {
     }
 }
 
-/// **Feature: trait-based-solver-redesign, Property 3: Zero-copy read preservation**
+/// **Feature: trait-based-solver-redesign, Property 3: Read-only operations work correctly**
 ///
-/// *For any* solver where part functions only read from shared data (no `to_mut()` calls),
-/// the underlying data should not be cloned during solve operations.
+/// *For any* solver where part functions only read from shared data,
+/// the solve operations should work correctly without mutation.
 ///
 /// **Validates: Requirements 2.4, 1.2, 1.3**
-mod property_3_zero_copy_read {
+mod property_3_read_only {
     use super::*;
 
-    // Read-only solver that doesn't call to_mut()
+    // Read-only solver
     #[derive(AocSolver)]
     #[aoc_solver(max_parts = 1)]
     struct ReadOnlySolver;
 
     impl AocParser for ReadOnlySolver {
-        type SharedData = Vec<i32>;
+        type SharedData<'a> = Vec<i32>;
 
-        fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-            let numbers: Vec<i32> = input
+        fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+            input
                 .lines()
                 .filter(|l| !l.is_empty())
                 .map(|l| {
                     l.parse()
                         .map_err(|_| ParseError::InvalidFormat("bad int".into()))
                 })
-                .collect::<Result<_, _>>()?;
-            Ok(Cow::Owned(numbers))
+                .collect()
         }
     }
 
     impl PartSolver<1> for ReadOnlySolver {
-        fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
-            // Read-only access via Deref - should NOT trigger clone
-            // We verify this by checking the Cow remains Owned after the operation
+        fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+            // Read-only access
             Ok(shared.iter().sum::<i32>().to_string())
         }
     }
@@ -147,29 +143,26 @@ mod property_3_zero_copy_read {
         #![proptest_config(ProptestConfig::with_cases(100))]
 
         #[test]
-        fn read_only_solve_preserves_cow_state(numbers in prop::collection::vec(1i32..100, 1..5)) {
+        fn read_only_solve_works_correctly(numbers in prop::collection::vec(1i32..100, 1..5)) {
             let input = numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\n");
+            let expected_sum: i32 = numbers.iter().sum();
 
             let mut shared = <ReadOnlySolver as AocParser>::parse(&input).unwrap();
 
-            // Verify it starts as Owned
-            prop_assert!(matches!(shared, Cow::Owned(_)), "Should start as Owned");
+            let result = <ReadOnlySolver as Solver>::solve_part(&mut shared, 1).unwrap();
 
-            let _ = <ReadOnlySolver as Solver>::solve_part(&mut shared, 1).unwrap();
-
-            // After read-only access, should still be Owned (no unnecessary clone)
-            prop_assert!(matches!(shared, Cow::Owned(_)), "Should remain Owned after read-only access");
+            prop_assert_eq!(result, expected_sum.to_string());
         }
     }
 }
 
-/// **Feature: trait-based-solver-redesign, Property 4: Clone-on-write mutation**
+/// **Feature: trait-based-solver-redesign, Property 4: Mutation works correctly**
 ///
-/// *For any* solver where a part function calls `to_mut()` on borrowed data,
-/// the data should be cloned exactly once, and subsequent mutations should work correctly.
+/// *For any* solver where a part function mutates shared data,
+/// the mutations should be visible to subsequent parts.
 ///
 /// **Validates: Requirements 2.5**
-mod property_4_clone_on_write {
+mod property_4_mutation {
     use super::*;
 
     #[derive(Debug, Clone)]
@@ -183,9 +176,9 @@ mod property_4_clone_on_write {
     struct MutatingSolver;
 
     impl AocParser for MutatingSolver {
-        type SharedData = MutableData;
+        type SharedData<'a> = MutableData;
 
-        fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+        fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
             let numbers: Vec<i32> = input
                 .lines()
                 .filter(|l| !l.is_empty())
@@ -194,28 +187,26 @@ mod property_4_clone_on_write {
                         .map_err(|_| ParseError::InvalidFormat("bad int".into()))
                 })
                 .collect::<Result<_, _>>()?;
-            Ok(Cow::Owned(MutableData {
+            Ok(MutableData {
                 numbers,
                 cached_sum: None,
-            }))
+            })
         }
     }
 
     impl PartSolver<1> for MutatingSolver {
-        fn solve(shared: &mut Cow<'_, MutableData>) -> Result<String, SolveError> {
-            // Mutating access via to_mut()
-            let data = shared.to_mut();
-            let sum: i32 = data.numbers.iter().sum();
-            data.cached_sum = Some(sum);
+        fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+            // Mutating access
+            let sum: i32 = shared.numbers.iter().sum();
+            shared.cached_sum = Some(sum);
             Ok(sum.to_string())
         }
     }
 
     impl PartSolver<2> for MutatingSolver {
-        fn solve(shared: &mut Cow<'_, MutableData>) -> Result<String, SolveError> {
-            // Second mutation - uses cached value from part 1
-            let data = shared.to_mut();
-            let sum = data.cached_sum.unwrap_or(0);
+        fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+            // Uses cached value from part 1
+            let sum = shared.cached_sum.unwrap_or(0);
             Ok((sum * 2).to_string())
         }
     }
@@ -224,7 +215,7 @@ mod property_4_clone_on_write {
         #![proptest_config(ProptestConfig::with_cases(100))]
 
         #[test]
-        fn mutation_via_to_mut_works_correctly(numbers in prop::collection::vec(1i32..100, 1..5)) {
+        fn mutation_works_correctly(numbers in prop::collection::vec(1i32..100, 1..5)) {
             let input = numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\n");
             let expected_sum: i32 = numbers.iter().sum();
 

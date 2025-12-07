@@ -13,7 +13,7 @@ A flexible and type-safe framework for solving Advent of Code problems across mu
 - Trait-based design with `AocParser` and `PartSolver<N>` for clean separation of concerns
 - Derive macros: `#[derive(AocSolver)]` and `#[derive(AutoRegisterSolver)]`
 - Plugin system with automatic solver discovery via `inventory`
-- Zero-copy support with `Cow<SharedData>`
+- Flexible `SharedData<'a>` with GAT support for zero-copy or owned data
 - Builder pattern for registry construction
 
 ### [aoc-solver-macros](./aoc-solver-macros/)
@@ -47,7 +47,6 @@ Actual puzzle solutions with automatic registration via the plugin system.
 ## Quick Start
 
 ```rust
-use std::borrow::Cow;
 use aoc_solver::{
     AocParser, AocSolver, AutoRegisterSolver,
     ParseError, PartSolver, SolveError,
@@ -60,25 +59,24 @@ use aoc_solver::{
 pub struct Day1;
 
 impl AocParser for Day1 {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
     
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input.lines()
             .map(|line| line.parse().map_err(|_| 
                 ParseError::InvalidFormat("Expected integer".to_string())))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -87,7 +85,7 @@ impl PartSolver<2> for Day1 {
 ### Using the Registry
 
 ```rust
-use aoc_solver::{SolverRegistryBuilder, SolverInstanceCow};
+use aoc_solver::SolverRegistryBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Auto-discover all registered solvers

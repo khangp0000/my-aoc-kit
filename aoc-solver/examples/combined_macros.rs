@@ -6,7 +6,6 @@
 //! Run with: cargo run --example combined_macros
 
 use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError, SolverRegistryBuilder};
-use std::borrow::Cow;
 
 /// Example solver using the macro
 #[derive(AocSolver)]
@@ -14,9 +13,9 @@ use std::borrow::Cow;
 struct Day1;
 
 impl AocParser for Day1 {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -24,19 +23,18 @@ impl AocParser for Day1 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -57,9 +55,9 @@ aoc_solver::inventory::submit! {
 struct Day2;
 
 impl AocParser for Day2 {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -67,13 +65,12 @@ impl AocParser for Day2 {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for Day2 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared
             .iter()
             .filter(|&&x| x % 2 == 0)
@@ -83,7 +80,7 @@ impl PartSolver<1> for Day2 {
 }
 
 impl PartSolver<2> for Day2 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared
             .iter()
             .filter(|&&x| x % 2 != 0)

@@ -2,16 +2,15 @@ use aoc_solver::{
     AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError, Solver,
     SolverRegistryBuilder,
 };
-use std::borrow::Cow;
 
 #[derive(AocSolver)]
 #[aoc_solver(max_parts = 2)]
 struct TestSolver1;
 
 impl AocParser for TestSolver1 {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -19,19 +18,18 @@ impl AocParser for TestSolver1 {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat("Expected integer".into()))
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for TestSolver1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for TestSolver1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -40,11 +38,11 @@ impl PartSolver<2> for TestSolver1 {
 #[test]
 fn test_aoc_solver_with_manual_registration() {
     let input = "2\n3\n4";
-    let mut cow = <TestSolver1 as AocParser>::parse(input).unwrap();
-    assert_eq!(*cow, vec![2, 3, 4]);
+    let mut shared = <TestSolver1 as AocParser>::parse(input).unwrap();
+    assert_eq!(shared, vec![2, 3, 4]);
 
     // Test Solver trait is implemented
-    let result = <TestSolver1 as Solver>::solve_part(&mut cow, 1).unwrap();
+    let result = <TestSolver1 as Solver>::solve_part(&mut shared, 1).unwrap();
     assert_eq!(result, "9");
 }
 
@@ -55,7 +53,7 @@ fn test_solver_can_be_registered_manually() {
     builder
         .register(2023, 15, 2, |input: &str| {
             let shared = <TestSolver1 as AocParser>::parse(input)?;
-            Ok(Box::new(aoc_solver::SolverInstanceCow::<TestSolver1>::new(
+            Ok(Box::new(aoc_solver::SolverInstance::<TestSolver1>::new(
                 2023, 15, shared,
             )))
         })
@@ -81,9 +79,9 @@ fn test_solver_can_be_registered_manually() {
 struct CombinedMacroSolver;
 
 impl AocParser for CombinedMacroSolver {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -91,19 +89,18 @@ impl AocParser for CombinedMacroSolver {
                     .parse::<i32>()
                     .map_err(|_| ParseError::InvalidFormat("Expected integer".into()))
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for CombinedMacroSolver {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for CombinedMacroSolver {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -112,10 +109,10 @@ impl PartSolver<2> for CombinedMacroSolver {
 fn test_both_macros_work_together() {
     // Test that the Solver trait is implemented
     let input = "5\n6\n7";
-    let mut cow = <CombinedMacroSolver as AocParser>::parse(input).unwrap();
-    assert_eq!(*cow, vec![5, 6, 7]);
+    let mut shared = <CombinedMacroSolver as AocParser>::parse(input).unwrap();
+    assert_eq!(shared, vec![5, 6, 7]);
 
-    let result = <CombinedMacroSolver as Solver>::solve_part(&mut cow, 1).unwrap();
+    let result = <CombinedMacroSolver as Solver>::solve_part(&mut shared, 1).unwrap();
     assert_eq!(result, "18");
 }
 

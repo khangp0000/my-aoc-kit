@@ -34,7 +34,7 @@
 //! ```
 
 use crate::error::{ParseError, RegistrationError, SolverError};
-use crate::instance::{DynSolver, SolverInstanceCow};
+use crate::instance::{DynSolver, SolverInstance};
 
 // ============================================================================
 // Storage Constants and Index Calculation
@@ -299,22 +299,21 @@ impl SolverRegistry {
 ///
 /// ```no_run
 /// use aoc_solver::{AocParser, ParseError, RegisterableSolver, SolverRegistryBuilder, SolveError, Solver};
-/// use std::borrow::Cow;
 ///
 /// struct MyDay1;
 ///
 /// impl AocParser for MyDay1 {
-///     type SharedData = ();
+///     type SharedData<'a> = ();
 ///     
-///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         Ok(Cow::Owned(()))
+///     fn parse(_: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         Ok(())
 ///     }
 /// }
 ///
 /// impl Solver for MyDay1 {
 ///     const PARTS: u8 = 2;
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Self::SharedData<'_>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }
@@ -362,7 +361,7 @@ where
     ) -> Result<&'a mut SolverRegistryBuilder, RegistrationError> {
         builder.register(year, day, S::PARTS, move |input: &str| {
             let shared = S::parse(input)?;
-            Ok(Box::new(SolverInstanceCow::<S>::new(year, day, shared)))
+            Ok(Box::new(SolverInstance::<S>::new(year, day, shared)))
         })
     }
 
@@ -380,22 +379,21 @@ where
 ///
 /// ```no_run
 /// use aoc_solver::{AocParser, ParseError, SolveError, Solver, SolverPlugin};
-/// use std::borrow::Cow;
 ///
 /// struct Day1Solver;
 ///
 /// impl AocParser for Day1Solver {
-///     type SharedData = ();
+///     type SharedData<'a> = ();
 ///     
-///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         Ok(Cow::Owned(()))
+///     fn parse(_: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         Ok(())
 ///     }
 /// }
 ///
 /// impl Solver for Day1Solver {
 ///     const PARTS: u8 = 1;
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Self::SharedData<'_>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }
@@ -432,22 +430,21 @@ inventory::collect!(SolverPlugin);
 ///
 /// ```
 /// use aoc_solver::{AocParser, register_solver, ParseError, SolverRegistryBuilder, SolveError, Solver, SolverRegistry};
-/// use std::borrow::Cow;
 ///
 /// struct MyDay1Solver;
 ///
 /// impl AocParser for MyDay1Solver {
-///     type SharedData = ();
+///     type SharedData<'a> = ();
 ///     
-///     fn parse(_: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         Ok(Cow::Owned(()))
+///     fn parse(_: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         Ok(())
 ///     }
 /// }
 ///
 /// impl Solver for MyDay1Solver {
 ///     const PARTS: u8 = 1;
 ///     
-///     fn solve_part(_: &mut Cow<'_, Self::SharedData>, _: u8) -> Result<String, SolveError> {
+///     fn solve_part(_: &mut Self::SharedData<'_>, _: u8) -> Result<String, SolveError> {
 ///         Err(SolveError::PartNotImplemented(0))
 ///     }
 /// }
@@ -462,7 +459,7 @@ macro_rules! register_solver {
         $builder
             .register($year, $day, <$solver>::PARTS, |input: &str| {
                 let shared = <$solver>::parse(input)?;
-                Ok(Box::new($crate::SolverInstanceCow::<$solver>::new(
+                Ok(Box::new($crate::SolverInstance::<$solver>::new(
                     $year, $day, shared,
                 )))
             })

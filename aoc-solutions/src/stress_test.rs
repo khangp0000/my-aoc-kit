@@ -4,7 +4,6 @@
 //! Each solver sleeps for a deterministic duration based on year/day.
 
 use aoc_solver::{AocParser, ParseError, SolveError, Solver, SolverPlugin};
-use std::borrow::Cow;
 use std::thread;
 use std::time::Duration;
 
@@ -20,12 +19,12 @@ macro_rules! stress_solver {
         pub struct $name;
 
         impl AocParser for $name {
-            type SharedData = StressTestData;
+            type SharedData<'a> = StressTestData;
 
-            fn parse(_input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+            fn parse(_input: &str) -> Result<Self::SharedData<'_>, ParseError> {
                 // Deterministic sleep duration based on year/day: 10-100ms
                 let sleep_ms = 10 + (($year as u64 * 25 + $day as u64) % 91);
-                Ok(Cow::Owned(StressTestData { sleep_ms }))
+                Ok(StressTestData { sleep_ms })
             }
         }
 
@@ -33,7 +32,7 @@ macro_rules! stress_solver {
             const PARTS: u8 = 2;
 
             fn solve_part(
-                shared: &mut Cow<'_, Self::SharedData>,
+                shared: &mut Self::SharedData<'_>,
                 part: u8,
             ) -> Result<String, SolveError> {
                 // Sleep for the configured duration

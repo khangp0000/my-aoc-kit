@@ -9,7 +9,6 @@ use aoc_solver::{
     AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError,
     SolverRegistryBuilder,
 };
-use std::borrow::Cow;
 
 /// Example solver that processes lines of integers
 ///
@@ -21,9 +20,9 @@ use std::borrow::Cow;
 pub struct ExampleIndependent;
 
 impl AocParser for ExampleIndependent {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
@@ -31,22 +30,21 @@ impl AocParser for ExampleIndependent {
                     ParseError::InvalidFormat(format!("Expected integer, got: {}", line))
                 })
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for ExampleIndependent {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
-        // Part 1: Sum all numbers (read-only, no need to call to_mut())
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        // Part 1: Sum all numbers
         let sum: i32 = shared.iter().sum();
         Ok(sum.to_string())
     }
 }
 
 impl PartSolver<2> for ExampleIndependent {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
-        // Part 2: Product of all numbers (read-only, no need to call to_mut())
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        // Part 2: Product of all numbers
         let product: i32 = shared.iter().product();
         Ok(product.to_string())
     }
@@ -88,14 +86,14 @@ mod tests {
     fn test_parse_valid_input() {
         let input = "1\n2\n3\n4\n5";
         let shared = ExampleIndependent::parse(input).unwrap();
-        assert_eq!(*shared, vec![1, 2, 3, 4, 5]);
+        assert_eq!(shared, vec![1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn test_parse_with_whitespace() {
         let input = "  1  \n  2  \n  3  ";
         let shared = ExampleIndependent::parse(input).unwrap();
-        assert_eq!(*shared, vec![1, 2, 3]);
+        assert_eq!(shared, vec![1, 2, 3]);
     }
 
     #[test]
@@ -107,21 +105,21 @@ mod tests {
 
     #[test]
     fn test_part1_sum() {
-        let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
+        let mut shared = vec![1, 2, 3, 4, 5];
         let result = <ExampleIndependent as PartSolver<1>>::solve(&mut shared).unwrap();
         assert_eq!(result, "15");
     }
 
     #[test]
     fn test_part2_product() {
-        let mut shared = Cow::Owned(vec![1, 2, 3, 4, 5]);
+        let mut shared = vec![1, 2, 3, 4, 5];
         let result = <ExampleIndependent as PartSolver<2>>::solve(&mut shared).unwrap();
         assert_eq!(result, "120");
     }
 
     #[test]
     fn test_invalid_part() {
-        let mut shared = Cow::Owned(vec![1, 2, 3]);
+        let mut shared = vec![1, 2, 3];
         let result = <ExampleIndependent as Solver>::solve_part(&mut shared, 3);
         assert!(result.is_err());
         assert!(matches!(result, Err(SolveError::PartNotImplemented(3))));

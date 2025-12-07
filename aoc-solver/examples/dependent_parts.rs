@@ -10,7 +10,6 @@ use aoc_solver::{
     AocParser, AocSolver, AutoRegisterSolver, ParseError, PartSolver, SolveError,
     SolverRegistryBuilder,
 };
-use std::borrow::Cow;
 
 /// Shared data that can be mutated by parts to pass information
 #[derive(Debug, Clone)]
@@ -30,9 +29,9 @@ pub struct SharedData {
 pub struct ExampleDependent;
 
 impl AocParser for ExampleDependent {
-    type SharedData = SharedData;
+    type SharedData<'a> = SharedData;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         let numbers: Vec<i32> = input
             .lines()
             .map(|line| {
@@ -42,35 +41,33 @@ impl AocParser for ExampleDependent {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Cow::Owned(SharedData {
+        Ok(SharedData {
             numbers,
             sum: None,
             count: None,
-        }))
+        })
     }
 }
 
 impl PartSolver<1> for ExampleDependent {
-    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         // Part 1: Calculate sum and count
-        // Need to mutate, so call to_mut() to get owned data
-        let data = shared.to_mut();
-        let sum: i32 = data.numbers.iter().sum();
-        let count = data.numbers.len();
+        let sum: i32 = shared.numbers.iter().sum();
+        let count = shared.numbers.len();
 
         // Store for Part 2
-        data.sum = Some(sum);
-        data.count = Some(count);
+        shared.sum = Some(sum);
+        shared.count = Some(count);
 
         Ok(sum.to_string())
     }
 }
 
 impl PartSolver<2> for ExampleDependent {
-    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         // Part 2: Calculate average using Part 1's data if available
         let average = if let (Some(sum), Some(count)) = (shared.sum, shared.count) {
-            // Use the data from Part 1 (read-only access)
+            // Use the data from Part 1
             println!("Using Part 1 data: sum={}, count={}", sum, count);
             if count > 0 {
                 sum as f64 / count as f64
@@ -78,7 +75,7 @@ impl PartSolver<2> for ExampleDependent {
                 0.0
             }
         } else {
-            // Compute independently if Part 1 wasn't run (read-only access)
+            // Compute independently if Part 1 wasn't run
             println!("Computing independently (Part 1 not run)");
             let sum: i32 = shared.numbers.iter().sum();
             let count = shared.numbers.len();
@@ -129,18 +126,17 @@ mod tests {
     #[test]
     fn test_parse_valid_input() {
         let input = "10\n20\n30";
-        let cow = <ExampleDependent as AocParser>::parse(input).unwrap();
-        let shared = cow.into_owned();
+        let shared = <ExampleDependent as AocParser>::parse(input).unwrap();
         assert_eq!(shared.numbers, vec![10, 20, 30]);
     }
 
     #[test]
     fn test_part1_stores_data() {
-        let mut shared = Cow::Owned(SharedData {
+        let mut shared = SharedData {
             numbers: vec![10, 20, 30],
             sum: None,
             count: None,
-        });
+        };
         let result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
 
         assert_eq!(result, "60");
@@ -150,11 +146,11 @@ mod tests {
 
     #[test]
     fn test_part2_uses_part1_data() {
-        let mut shared = Cow::Owned(SharedData {
+        let mut shared = SharedData {
             numbers: vec![10, 20, 30],
             sum: None,
             count: None,
-        });
+        };
 
         // First solve Part 1 to populate shared data
         let _part1_result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
@@ -168,11 +164,11 @@ mod tests {
 
     #[test]
     fn test_part2_solves_independently() {
-        let mut shared = Cow::Owned(SharedData {
+        let mut shared = SharedData {
             numbers: vec![10, 20, 30],
             sum: None,
             count: None,
-        });
+        };
 
         // Solve Part 2 without Part 1's data
         let result = <ExampleDependent as PartSolver<2>>::solve(&mut shared).unwrap();
@@ -183,11 +179,11 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        let mut shared = Cow::Owned(SharedData {
+        let mut shared = SharedData {
             numbers: vec![],
             sum: None,
             count: None,
-        });
+        };
 
         let part1_result = <ExampleDependent as PartSolver<1>>::solve(&mut shared).unwrap();
         assert_eq!(part1_result, "0");

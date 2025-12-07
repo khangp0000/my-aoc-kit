@@ -11,7 +11,7 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 - **Builder pattern**: Fluent API for registry construction with compile-time immutability guarantees
 - **Plugin system**: Automatic solver discovery and registration using the `inventory` crate
 - **Derive macros**: Zero-boilerplate with `#[derive(AocSolver)]` and `#[derive(AutoRegisterSolver)]`
-- **Zero-copy support**: `Cow<SharedData>` enables efficient memory usage
+- **Flexible data ownership**: Generic associated type `SharedData<'a>` allows any ownership strategy (owned, borrowed)
 
 ## Quick Start
 
@@ -20,7 +20,6 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 The easiest way to create a solver is using `AocParser`, `PartSolver<N>`, and `#[derive(AocSolver)]`:
 
 ```rust
-use std::borrow::Cow;
 use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError};
 
 #[derive(AocSolver)]
@@ -28,28 +27,27 @@ use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError};
 struct Day1;
 
 impl AocParser for Day1 {
-    type SharedData = Vec<i32>;
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input
             .lines()
             .map(|line| {
                 line.parse()
                     .map_err(|_| ParseError::InvalidFormat("Expected integer".into()))
             })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
 }
 
 impl PartSolver<1> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().sum::<i32>().to_string())
     }
 }
 
 impl PartSolver<2> for Day1 {
-    fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         Ok(shared.iter().product::<i32>().to_string())
     }
 }
@@ -58,13 +56,13 @@ impl PartSolver<2> for Day1 {
 ### Register and Use
 
 ```rust
-use aoc_solver::{SolverRegistryBuilder, Solver, SolverInstanceCow};
+use aoc_solver::{SolverRegistryBuilder, Solver, SolverInstance};
 
 fn main() {
     let registry = SolverRegistryBuilder::new()
         .register(2023, 1, |input: &str| {
             let shared = Day1::parse(input)?;
-            Ok(Box::new(SolverInstanceCow::<Day1>::new(2023, 1, shared)))
+            Ok(Box::new(SolverInstance::<Day1>::new(2023, 1, shared)))
         })
         .unwrap()
         .build();
@@ -85,8 +83,8 @@ Defines the shared data type and parsing logic:
 
 ```rust
 pub trait AocParser {
-    type SharedData: ToOwned + Clone;
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError>;
+    type SharedData<'a>;
+    fn parse<'a>(input: &'a str) -> Result<Self::SharedData<'a>, ParseError>;
 }
 ```
 
@@ -96,7 +94,7 @@ Defines the solving logic for each part using const generics:
 
 ```rust
 pub trait PartSolver<const N: u8>: AocParser {
-    fn solve(shared: &mut Cow<'_, Self::SharedData>) -> Result<String, SolveError>;
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError>;
 }
 ```
 
@@ -119,7 +117,7 @@ struct Day1;
 For problems where Part 2 depends on Part 1's computation:
 
 ```rust
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct SharedData {
     numbers: Vec<i32>,
     sum: Option<i32>,
@@ -131,31 +129,29 @@ struct SharedData {
 struct Day5;
 
 impl AocParser for Day5 {
-    type SharedData = SharedData;
+    type SharedData<'a> = SharedData;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         let numbers: Vec<i32> = input
             .lines()
             .map(|line| line.parse().map_err(|_| ParseError::InvalidFormat("bad".into())))
             .collect::<Result<_, _>>()?;
-        Ok(Cow::Owned(SharedData { numbers, sum: None, count: None }))
+        Ok(SharedData { numbers, sum: None, count: None })
     }
 }
 
 impl PartSolver<1> for Day5 {
-    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
-        // Need to mutate - call to_mut() to get owned data
-        let data = shared.to_mut();
-        let sum: i32 = data.numbers.iter().sum();
-        data.sum = Some(sum);
-        data.count = Some(data.numbers.len());
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        let sum: i32 = shared.numbers.iter().sum();
+        shared.sum = Some(sum);
+        shared.count = Some(shared.numbers.len());
         Ok(sum.to_string())
     }
 }
 
 impl PartSolver<2> for Day5 {
-    fn solve(shared: &mut Cow<'_, SharedData>) -> Result<String, SolveError> {
-        // Read-only - use cached value if available
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        // Use cached value if available (from Part 1)
         let sum = shared.sum.unwrap_or_else(|| shared.numbers.iter().sum());
         let count = shared.count.unwrap_or_else(|| shared.numbers.len());
         let avg = if count > 0 { sum as f64 / count as f64 } else { 0.0 };
@@ -213,23 +209,24 @@ let registry = SolverRegistryBuilder::new()
 You can also implement the `Solver` trait directly without macros:
 
 ```rust
-use std::borrow::Cow;
-use aoc_solver::{Solver, ParseError, SolveError};
+use aoc_solver::{AocParser, Solver, ParseError, SolveError};
 
 struct Day1;
 
-impl Solver for Day1 {
-    type SharedData = Vec<i32>;
-    const PARTS: u8 = 2;
+impl AocParser for Day1 {
+    type SharedData<'a> = Vec<i32>;
 
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
         input.lines()
             .map(|line| line.parse().map_err(|_| ParseError::InvalidFormat("bad".into())))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Cow::Owned)
+            .collect()
     }
+}
 
-    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError> {
+impl Solver for Day1 {
+    const PARTS: u8 = 2;
+
+    fn solve_part(shared: &mut Self::SharedData<'_>, part: u8) -> Result<String, SolveError> {
         match part {
             1 => Ok(shared.iter().sum::<i32>().to_string()),
             2 => Ok(shared.iter().product::<i32>().to_string()),
@@ -239,13 +236,46 @@ impl Solver for Day1 {
 }
 ```
 
+## Zero-Copy Parsing
+
+For inputs that don't need transformation, use `&'a str` for true zero-copy:
+
+```rust
+use aoc_solver::{AocParser, AocSolver, ParseError, PartSolver, SolveError};
+
+#[derive(AocSolver)]
+#[aoc_solver(max_parts = 2)]
+struct ZeroCopyExample;
+
+impl AocParser for ZeroCopyExample {
+    // No allocation - just borrow the input directly!
+    type SharedData<'a> = &'a str;
+
+    fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+        Ok(input)
+    }
+}
+
+impl PartSolver<1> for ZeroCopyExample {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        Ok(shared.lines().count().to_string())
+    }
+}
+
+impl PartSolver<2> for ZeroCopyExample {
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
+        Ok(shared.len().to_string())
+    }
+}
+```
+
 ## Key Concepts
 
-### Zero-Copy Design
+### Flexible Data Ownership
 
-The library uses `Cow<SharedData>` to enable zero-copy parsing:
-- Read-only operations work directly with borrowed data
-- Call `.to_mut()` only when mutation is needed (triggers clone if borrowed)
+The library uses a generic associated type `SharedData<'a>` for maximum flexibility:
+- Use owned types like `Vec<T>` or custom structs when you need to store and mutate data (simplest approach)
+- Use `&'a str` or `&'a [T]` for true zero-copy borrowed data when no transformation is needed
 
 ### SolverRegistryBuilder and SolverRegistry
 

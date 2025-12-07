@@ -1,7 +1,6 @@
 //! Core solver trait and related types
 
 use crate::error::{ParseError, SolveError};
-use std::borrow::Cow;
 
 /// Trait for parsing AOC puzzle input into shared data
 ///
@@ -12,32 +11,30 @@ use std::borrow::Cow;
 ///
 /// ```
 /// use aoc_solver::{AocParser, ParseError};
-/// use std::borrow::Cow;
 ///
 /// struct Day1;
 ///
 /// impl AocParser for Day1 {
-///     type SharedData = Vec<i32>;
+///     type SharedData<'a> = Vec<i32>;
 ///     
-///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         let numbers: Vec<i32> = input
+///     fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         input
 ///             .lines()
 ///             .map(|l| l.parse().map_err(|_| ParseError::InvalidFormat("bad int".into())))
-///             .collect::<Result<_, _>>()?;
-///         Ok(Cow::Owned(numbers))
+///             .collect()
 ///     }
 /// }
 /// ```
 pub trait AocParser {
     /// The shared data structure that holds parsed input and intermediate results.
-    /// Must implement ToOwned to support zero-copy via Cow.
-    /// Use `?Sized` to allow unsized types like `str` for true zero-copy parsing.
-    type SharedData: ToOwned + ?Sized;
+    /// 
+    /// Use any ownership strategy:
+    /// - `Vec<T>` or custom structs for owned data (simplest, supports mutation)
+    /// - `&'a str` for zero-copy borrowed data when no transformation is needed
+    type SharedData<'a>;
 
     /// Parse the input string into the shared data structure.
-    ///
-    /// Returns `Cow::Owned` for transformed data, or `Cow::Borrowed` for zero-copy.
-    fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError>;
+    fn parse<'a>(input: &'a str) -> Result<Self::SharedData<'a>, ParseError>;
 }
 
 /// Trait for solving a specific part of an AOC puzzle.
@@ -49,24 +46,22 @@ pub trait AocParser {
 ///
 /// ```
 /// use aoc_solver::{AocParser, PartSolver, ParseError, SolveError};
-/// use std::borrow::Cow;
 ///
 /// struct Day1;
 ///
 /// impl AocParser for Day1 {
-///     type SharedData = Vec<i32>;
+///     type SharedData<'a> = Vec<i32>;
 ///     
-///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
-///         let numbers: Vec<i32> = input
+///     fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
+///         input
 ///             .lines()
 ///             .map(|l| l.parse().map_err(|_| ParseError::InvalidFormat("bad int".into())))
-///             .collect::<Result<_, _>>()?;
-///         Ok(Cow::Owned(numbers))
+///             .collect()
 ///     }
 /// }
 ///
 /// impl PartSolver<1> for Day1 {
-///     fn solve(shared: &mut Cow<'_, Vec<i32>>) -> Result<String, SolveError> {
+///     fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
 ///         Ok(shared.iter().sum::<i32>().to_string())
 ///     }
 /// }
@@ -75,14 +70,12 @@ pub trait PartSolver<const N: u8>: AocParser {
     /// Solve this part of the puzzle.
     ///
     /// # Arguments
-    /// * `shared` - Mutable reference to Cow containing shared data.
-    ///   - For read-only operations: just read from `shared` (zero-copy)
-    ///   - For mutations: call `shared.to_mut()` to get owned data (triggers clone if borrowed)
+    /// * `shared` - Mutable reference to shared data
     ///
     /// # Returns
     /// * `Ok(String)` - The answer for this part
     /// * `Err(SolveError)` - An error occurred while solving
-    fn solve(shared: &mut Cow<'_, Self::SharedData>) -> Result<String, SolveError>;
+    fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError>;
 }
 
 /// Core trait that all Advent of Code solvers must implement.
@@ -95,7 +88,6 @@ pub trait PartSolver<const N: u8>: AocParser {
 ///
 /// ```
 /// use aoc_solver::{AocParser, ParseError, SolveError, Solver};
-/// use std::borrow::Cow;
 ///
 /// struct Day1Solver;
 ///
@@ -105,14 +97,14 @@ pub trait PartSolver<const N: u8>: AocParser {
 /// }
 ///
 /// impl AocParser for Day1Solver {
-///     type SharedData = SharedData;
+///     type SharedData<'a> = SharedData;
 ///
-///     fn parse(input: &str) -> Result<Cow<'_, Self::SharedData>, ParseError> {
+///     fn parse(input: &str) -> Result<Self::SharedData<'_>, ParseError> {
 ///         let numbers = input.lines()
 ///             .map(|line| line.parse().map_err(|_|
 ///                 ParseError::InvalidFormat("Expected integer".to_string())))
 ///             .collect::<Result<Vec<_>, _>>()?;
-///         Ok(Cow::Owned(SharedData { numbers }))
+///         Ok(SharedData { numbers })
 ///     }
 /// }
 ///
@@ -120,17 +112,17 @@ pub trait PartSolver<const N: u8>: AocParser {
 ///     const PARTS: u8 = 2;
 ///
 ///     fn solve_part(
-///         shared: &mut Cow<'_, Self::SharedData>,
+///         shared: &mut Self::SharedData<'_>,
 ///         part: u8,
 ///     ) -> Result<String, SolveError> {
 ///         match part {
 ///             1 => {
-///                 // Part 1: Sum all numbers (read-only, zero-copy)
+///                 // Part 1: Sum all numbers
 ///                 let sum: i32 = shared.numbers.iter().sum();
 ///                 Ok(sum.to_string())
 ///             }
 ///             2 => {
-///                 // Part 2: Product of all numbers (read-only, zero-copy)
+///                 // Part 2: Product of all numbers
 ///                 let product: i32 = shared.numbers.iter().product();
 ///                 Ok(product.to_string())
 ///             }
@@ -146,20 +138,19 @@ pub trait Solver: AocParser {
     /// Solve a specific part of the problem
     ///
     /// # Arguments
-    /// * `shared` - Mutable reference to Cow containing shared data (parsed input and intermediate results).
-    ///   Solvers can work with borrowed data or call `.to_mut()` to get owned data when mutation is needed
+    /// * `shared` - Mutable reference to shared data (parsed input and intermediate results)
     /// * `part` - The part number (1, 2, etc.)
     ///
     /// # Returns
     /// * `Ok(String)` - The answer for this part
     /// * `Err(SolveError::PartNotImplemented)` - The part is not implemented
     /// * `Err(SolveError::SolveFailed)` - An error occurred while solving
-    fn solve_part(shared: &mut Cow<'_, Self::SharedData>, part: u8) -> Result<String, SolveError>;
+    fn solve_part(shared: &mut Self::SharedData<'_>, part: u8) -> Result<String, SolveError>;
 }
 
 pub trait SolverExt: Solver {
     fn solve_part_checked_range(
-        shared: &mut Cow<'_, Self::SharedData>,
+        shared: &mut Self::SharedData<'_>,
         part: u8,
     ) -> Result<String, SolveError> {
         if (1..=Self::PARTS).contains(&part) {
