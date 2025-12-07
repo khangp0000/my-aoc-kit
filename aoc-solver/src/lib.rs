@@ -49,8 +49,8 @@
 //! }
 //!
 //! // Use the solver with builder pattern
-//! let builder = SolverRegistryBuilder::new();
-//! let builder = builder.register(2023, 1, |input: &str| {
+//! let mut builder = SolverRegistryBuilder::new();
+//! builder.register(2023, 1, 2, |input: &str| {
 //!     let shared = MyDay1::parse(input)?;
 //!     Ok(Box::new(SolverInstanceCow::<MyDay1>::new(2023, 1, shared)))
 //! }).unwrap();

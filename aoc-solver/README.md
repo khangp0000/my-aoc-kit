@@ -250,8 +250,7 @@ The library uses `Cow<SharedData>` to enable zero-copy parsing:
 ### SolverRegistryBuilder and SolverRegistry
 
 **SolverRegistryBuilder** (mutable, for construction):
-- `register()`: Add a solver factory (defaults to 2 parts)
-- `register_factory()`: Add a solver factory with explicit parts count
+- `register()`: Add a solver factory with year, day, parts count, and factory function
 - `register_all_plugins()`: Register all discovered plugins
 - `register_solver_plugins(filter)`: Register plugins matching a predicate
 - `build()`: Finalize into an immutable `SolverRegistry`

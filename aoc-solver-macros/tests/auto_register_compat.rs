@@ -51,9 +51,9 @@ fn test_aoc_solver_with_manual_registration() {
 #[test]
 fn test_solver_can_be_registered_manually() {
     // Test that the solver can be manually registered and used via the registry
-    let builder = SolverRegistryBuilder::new();
-    let builder = builder
-        .register(2023, 15, |input: &str| {
+    let mut builder = SolverRegistryBuilder::new();
+    builder
+        .register(2023, 15, 2, |input: &str| {
             let shared = <TestSolver1 as AocParser>::parse(input)?;
             Ok(Box::new(aoc_solver::SolverInstanceCow::<TestSolver1>::new(
                 2023, 15, shared,

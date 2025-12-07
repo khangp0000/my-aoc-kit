@@ -264,8 +264,9 @@ fn main() {
 
     // Scenario 4: Mix manual registration with plugin registration
     println!("\n--- Scenario 4: Mix Manual and Plugin Registration ---");
-    let registry = SolverRegistryBuilder::new()
-        .register(2022, 1, |input: &str| {
+    let mut builder = SolverRegistryBuilder::new();
+    builder
+        .register(2022, 1, 2, |input: &str| {
             // Manual registration for a custom solver
             let shared: Vec<i32> = input
                 .lines()
@@ -277,7 +278,8 @@ fn main() {
                 Cow::Owned(shared),
             )))
         })
-        .expect("Failed to register manual solver")
+        .expect("Failed to register manual solver");
+    let registry = builder
         .register_solver_plugins(|plugin| plugin.tags.contains(&"easy"))
         .expect("Failed to register plugins")
         .build();

@@ -106,22 +106,20 @@ struct SolverFactoryEntry {
 ///
 /// ```ignore
 /// # use aoc_solver::SolverRegistryBuilder;
-/// let registry = SolverRegistryBuilder::new()
-///     .register(2023, 1, |input| { /* ... */ Ok(Box::new(/* solver */)) })
-///     .unwrap()
-///     .register(2023, 2, |input| { /* ... */ Ok(Box::new(/* solver */)) })
-///     .unwrap()
-///     .build();
+/// let mut builder = SolverRegistryBuilder::new();
+/// builder.register(2023, 1, 2, |input| { /* ... */ Ok(Box::new(/* solver */)) }).unwrap();
+/// builder.register(2023, 2, 2, |input| { /* ... */ Ok(Box::new(/* solver */)) }).unwrap();
+/// let registry = builder.build();
 /// ```
 pub struct SolverRegistryBuilder {
-    entries: Vec<Option<SolverFactoryEntry>>,
+    storage: SolverRegistryStorage,
 }
 
 impl SolverRegistryBuilder {
     /// Create a new empty registry builder with pre-allocated storage
     pub fn new() -> Self {
         Self {
-            entries: (0..CAPACITY).map(|_| None).collect(),
+            storage: SolverRegistryStorage::new(),
         }
     }
 
@@ -138,7 +136,7 @@ impl SolverRegistryBuilder {
     /// # Returns
     /// * `Ok(&mut Self)` - Builder with the solver registered, ready for chaining
     /// * `Err(RegistrationError)` - Invalid year/day or duplicate registration
-    pub fn register_factory<F>(
+    pub fn register<F>(
         &mut self,
         year: u16,
         day: u8,
@@ -151,40 +149,7 @@ impl SolverRegistryBuilder {
             + Sync
             + 'static,
     {
-        let index = calc_index(year, day).ok_or(RegistrationError::InvalidYearDay(year, day))?;
-
-        if self.entries[index].is_some() {
-            return Err(RegistrationError::DuplicateSolverFactory(year, day));
-        }
-
-        self.entries[index] = Some(SolverFactoryEntry {
-            factory: Box::new(factory),
-            parts,
-        });
-        Ok(self)
-    }
-
-    /// Register a solver factory function for a specific year and day (legacy wrapper)
-    ///
-    /// This is a convenience method that defaults to 2 parts (standard AoC).
-    /// For explicit parts count, use `register_factory()`.
-    ///
-    /// # Arguments
-    /// * `year` - The Advent of Code year
-    /// * `day` - The day number (1-25)
-    /// * `factory` - A function that takes input and returns a boxed DynSolver
-    ///
-    /// # Returns
-    /// * `Ok(Self)` - Builder with the solver registered, ready for chaining
-    /// * `Err(RegistrationError)` - Invalid year/day or duplicate registration
-    pub fn register<F>(mut self, year: u16, day: u8, factory: F) -> Result<Self, RegistrationError>
-    where
-        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.register_factory(year, day, 2, factory)?;
+        self.storage.register(year, day, parts, factory)?;
         Ok(self)
     }
 
@@ -262,9 +227,7 @@ impl SolverRegistryBuilder {
     /// be used for solver lookup and creation.
     pub fn build(self) -> SolverRegistry {
         SolverRegistry {
-            storage: SolverRegistryStorage {
-                entries: self.entries,
-            },
+            storage: self.storage,
         }
     }
 }
@@ -314,15 +277,7 @@ impl SolverRegistry {
         day: u8,
         input: &'a str,
     ) -> Result<Box<dyn DynSolver + 'a>, SolverError> {
-        let index = calc_index(year, day).ok_or(SolverError::InvalidYearDay(year, day))?;
-
-        let entry = self
-            .storage
-            .entries
-            .get(index)
-            .and_then(|e| e.as_ref())
-            .ok_or(SolverError::NotFound(year, day))?;
-
+        let entry = self.storage.get_entry(year, day)?;
         (entry.factory)(input).map_err(SolverError::ParseError)
     }
 }
@@ -405,7 +360,7 @@ where
         year: u16,
         day: u8,
     ) -> Result<&'a mut SolverRegistryBuilder, RegistrationError> {
-        builder.register_factory(year, day, S::PARTS, move |input: &str| {
+        builder.register(year, day, S::PARTS, move |input: &str| {
             let shared = S::parse(input)?;
             Ok(Box::new(SolverInstanceCow::<S>::new(year, day, shared)))
         })
@@ -505,7 +460,7 @@ inventory::collect!(SolverPlugin);
 macro_rules! register_solver {
     ($builder:expr, $solver:ty, $year:expr, $day:expr) => {
         $builder
-            .register_factory($year, $day, <$solver>::PARTS, |input: &str| {
+            .register($year, $day, <$solver>::PARTS, |input: &str| {
                 let shared = <$solver>::parse(input)?;
                 Ok(Box::new($crate::SolverInstanceCow::<$solver>::new(
                     $year, $day, shared,
@@ -519,7 +474,7 @@ macro_rules! register_solver {
 // Factory Storage Implementation
 // ============================================================================
 
-/// Immutable storage for solver factories.
+/// Storage for solver factories.
 ///
 /// Provides efficient lookup and iteration over registered solver factories.
 /// Supports years 2015-2034 and days 1-25. The internal implementation may
@@ -536,6 +491,52 @@ pub struct SolverRegistryStorage {
 }
 
 impl SolverRegistryStorage {
+    /// Create a new empty storage with pre-allocated capacity
+    pub(crate) fn new() -> Self {
+        Self {
+            entries: (0..CAPACITY).map(|_| None).collect(),
+        }
+    }
+
+    /// Register a solver factory with explicit parts count
+    ///
+    /// Returns error if year/day is out of bounds or already registered.
+    fn register<F>(
+        &mut self,
+        year: u16,
+        day: u8,
+        parts: u8,
+        factory: F,
+    ) -> Result<(), RegistrationError>
+    where
+        F: for<'a> Fn(&'a str) -> Result<Box<dyn DynSolver + 'a>, ParseError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let index = calc_index(year, day).ok_or(RegistrationError::InvalidYearDay(year, day))?;
+
+        if self.entries[index].is_some() {
+            return Err(RegistrationError::DuplicateSolverFactory(year, day));
+        }
+
+        self.entries[index] = Some(SolverFactoryEntry {
+            factory: Box::new(factory),
+            parts,
+        });
+        Ok(())
+    }
+
+    /// Get a factory by year/day (internal use for create_solver)
+    fn get_entry(&self, year: u16, day: u8) -> Result<&SolverFactoryEntry, SolverError> {
+        let index = calc_index(year, day).ok_or(SolverError::InvalidYearDay(year, day))?;
+
+        self.entries
+            .get(index)
+            .and_then(|e| e.as_ref())
+            .ok_or(SolverError::NotFound(year, day))
+    }
+
     /// Iterate over metadata for all registered factories.
     ///
     /// Items are yielded in ascending (year, day) order. This ordering is
