@@ -30,7 +30,7 @@ pub struct Args {
     pub day: Option<u8>,
 
     /// Part to run (runs all parts if omitted)
-    #[arg(short, long, value_parser = clap::value_parser!(u8).range(1..=2))]
+    #[arg(short, long, value_parser = clap::value_parser!(u8).range(1..))]
     pub part: Option<u8>,
 
     /// Tags to filter solvers (comma-separated)

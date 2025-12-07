@@ -16,6 +16,13 @@ pub struct StressTestData {
 /// Macro to generate a stress test solver for a specific year/day
 macro_rules! stress_solver {
     ($name:ident, $year:expr, $day:expr) => {
+        stress_solver_many_parts!($name, $year, $day, 2);
+    };
+}
+
+/// Macro to generate a stress test solver with configurable number of parts
+macro_rules! stress_solver_many_parts {
+    ($name:ident, $year:expr, $day:expr, $parts:expr) => {
         pub struct $name;
 
         impl AocParser for $name {
@@ -29,7 +36,7 @@ macro_rules! stress_solver {
         }
 
         impl Solver for $name {
-            const PARTS: u8 = 2;
+            const PARTS: u8 = $parts;
 
             fn solve_part(
                 shared: &mut Self::SharedData<'_>,
@@ -135,8 +142,8 @@ stress_solver!(Y2017D23, 2017, 23);
 stress_solver!(Y2017D24, 2017, 24);
 stress_solver!(Y2017D25, 2017, 25);
 
-// Year 2018
-stress_solver!(Y2018D01, 2018, 1);
+// Year 2018 - Day 1 has 50 parts to test many-part support
+stress_solver_many_parts!(Y2018D01, 2018, 1, 50);
 stress_solver!(Y2018D02, 2018, 2);
 stress_solver!(Y2018D03, 2018, 3);
 stress_solver!(Y2018D04, 2018, 4);

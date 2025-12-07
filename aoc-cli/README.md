@@ -57,7 +57,7 @@ aoc --year 2024 --day 1 --quiet
 |--------|-------|-------------|
 | `--year <YEAR>` | `-y` | Year to run (all years if omitted) |
 | `--day <DAY>` | `-d` | Day to run, 1-25 (all days if omitted) |
-| `--part <PART>` | `-p` | Part to run, 1-2 (all parts if omitted) |
+| `--part <PART>` | `-p` | Part to run (all parts if omitted) |
 | `--tags <TAGS>` | `-t` | Comma-separated tags to filter solvers |
 | `--cache-dir <PATH>` | | Cache directory (default: `~/.cache/aoc_solver`) |
 | `--threads <N>` | | Number of threads (default: CPU count) |

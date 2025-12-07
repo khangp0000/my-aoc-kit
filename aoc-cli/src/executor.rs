@@ -298,26 +298,43 @@ fn run_solver_parts_parallel(
                 .ok();
         });
 
-    // Buffer and emit results in part order
-    let mut buffer: [Option<SolverResult>; 2] = [None, None];
+    // Buffer and emit results in part order using a min-heap
+    let mut heap: std::collections::BinaryHeap<PartOrderedResult> =
+        std::collections::BinaryHeap::new();
     let start_part = *work.parts.start();
     let mut next_part = start_part;
 
     for result in result_rx {
-        let idx = (result.part - start_part) as usize;
-        if idx < buffer.len() {
-            buffer[idx] = Some(result);
-        }
+        heap.push(PartOrderedResult(result));
         // Emit buffered results in order
-        while let Some(result) = buffer
-            .get_mut((next_part - start_part) as usize)
-            .and_then(Option::take)
-        {
+        while heap.peek().is_some_and(|r| r.0.part == next_part) {
+            let result = heap.pop().unwrap().0;
             send_result(tx, result, client.as_ref(), session, submit, auto_retry)?;
             next_part += 1;
         }
     }
     Ok(())
+}
+
+/// Wrapper for SolverResult that orders by part number (min-heap via Reverse ordering)
+struct PartOrderedResult(SolverResult);
+
+impl Eq for PartOrderedResult {}
+impl PartialEq for PartOrderedResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.part == other.0.part
+    }
+}
+impl Ord for PartOrderedResult {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Reverse ordering for min-heap behavior
+        other.0.part.cmp(&self.0.part)
+    }
+}
+impl PartialOrd for PartOrderedResult {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Run solver sequentially in background, submit as results arrive
