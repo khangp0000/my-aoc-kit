@@ -587,7 +587,7 @@ mod tests {
 
         // Build client with default settings (tests that redirect policy is enforced by default)
         let client = AocClient::builder()
-            .base_url(&server.url())
+            .base_url(server.url())
             .unwrap()
             .build()
             .unwrap();
@@ -633,7 +633,7 @@ mod tests {
 
             // Build client with mock server URL
             let client = AocClient::builder()
-                .base_url(&server.url())
+                .base_url(server.url())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -669,7 +669,7 @@ mod tests {
                 .expect(1);
 
             // Add location header for redirects
-            let mock = if status_code >= 300 && status_code < 400 {
+            let mock = if (300..400).contains(&status_code) {
                 mock_builder.with_header("location", "/").create()
             } else {
                 mock_builder.create()
@@ -677,7 +677,7 @@ mod tests {
 
             // Build client with mock server URL
             let client = AocClient::builder()
-                .base_url(&server.url())
+                .base_url(server.url())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -719,7 +719,7 @@ mod tests {
 
             // Build client with mock server URL
             let client = AocClient::builder()
-                .base_url(&server.url())
+                .base_url(server.url())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -780,7 +780,7 @@ mod tests {
 
             // Build client with mock server URL
             let client = AocClient::builder()
-                .base_url(&server.url())
+                .base_url(server.url())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -837,7 +837,7 @@ mod tests {
 
             // Build client with mock server URL
             let client = AocClient::builder()
-                .base_url(&server.url())
+                .base_url(server.url())
                 .unwrap()
                 .build()
                 .unwrap();

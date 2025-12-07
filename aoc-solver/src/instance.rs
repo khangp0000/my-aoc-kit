@@ -13,7 +13,7 @@ pub struct SolverInstance<'a, S: Solver> {
     shared: S::SharedData<'a>,
 }
 
-impl<'b, 'a, S: Solver> SolverInstance<'a, S> {
+impl<'a, S: Solver> SolverInstance<'a, S> {
     /// Create a new solver instance
     ///
     /// # Arguments
@@ -69,7 +69,7 @@ pub trait DynSolver {
     fn parts(&self) -> u8;
 }
 
-impl<'a, 'b, S: SolverExt> DynSolver for SolverInstance<'a, S> {
+impl<'a, S: SolverExt> DynSolver for SolverInstance<'a, S> {
     fn solve(&mut self, part: u8) -> Result<String, SolveError> {
         S::solve_part_checked_range(&mut self.shared, part)
     }

@@ -49,7 +49,7 @@ impl PartSolver<2> for TestDependentSolver {
     fn solve(shared: &mut Self::SharedData<'_>) -> Result<String, SolveError> {
         // Use data from part1 if available, otherwise compute
         let sum = shared.sum.unwrap_or_else(|| shared.numbers.iter().sum());
-        let count = shared.count.unwrap_or_else(|| shared.numbers.len());
+        let count = shared.count.unwrap_or(shared.numbers.len());
 
         let avg = if count > 0 {
             sum as f64 / count as f64

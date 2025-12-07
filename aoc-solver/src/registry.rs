@@ -173,7 +173,9 @@ impl SolverRegistryBuilder {
     /// * `Err(RegistrationError)` - Duplicate solver found
     pub fn register_all_plugins(mut self) -> Result<Self, RegistrationError> {
         for plugin in inventory::iter::<SolverPlugin>() {
-            plugin.solver.register_with(&mut self, plugin.year, plugin.day)?;
+            plugin
+                .solver
+                .register_with(&mut self, plugin.year, plugin.day)?;
         }
         Ok(self)
     }
@@ -215,7 +217,9 @@ impl SolverRegistryBuilder {
     {
         for plugin in inventory::iter::<SolverPlugin>() {
             if filter(plugin) {
-                plugin.solver.register_with(&mut self, plugin.year, plugin.day)?;
+                plugin
+                    .solver
+                    .register_with(&mut self, plugin.year, plugin.day)?;
             }
         }
         Ok(self)
@@ -597,5 +601,3 @@ impl SolverRegistryStorage {
         self.entries.iter().all(|e| e.is_none())
     }
 }
-
-

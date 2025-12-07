@@ -190,25 +190,25 @@ fn main() {
         .build();
 
     // Test all registered solvers
-    if let Ok(mut solver) = registry.create_solver(2023, 1, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 1 Part 1: {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 1, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 1 Part 1: {}", answer);
     }
-    if let Ok(mut solver) = registry.create_solver(2023, 2, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 2 Part 1: {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 2, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 2 Part 1: {}", answer);
     }
-    if let Ok(mut solver) = registry.create_solver(2024, 3, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2024 Day 3 Part 1: {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2024, 3, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2024 Day 3 Part 1: {}", answer);
     }
-    if let Ok(mut solver) = registry.create_solver(2024, 4, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2024 Day 4 Part 1 (derive macro): {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2024, 4, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2024 Day 4 Part 1 (derive macro): {}", answer);
     }
 
     // Scenario 2: Register only "easy" solvers
@@ -219,19 +219,19 @@ fn main() {
         .build();
 
     // Only easy solvers should be registered (Day 1 and Day 3)
-    if let Ok(mut solver) = registry.create_solver(2023, 1, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 1 Part 1 (easy): {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 1, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 1 Part 1 (easy): {}", answer);
     }
     match registry.create_solver(2023, 2, input) {
         Ok(_) => println!("2023 Day 2 was registered (unexpected!)"),
         Err(_) => println!("2023 Day 2 not registered (expected - it's 'hard')"),
     }
-    if let Ok(mut solver) = registry.create_solver(2024, 3, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2024 Day 3 Part 1 (easy): {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2024, 3, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2024 Day 3 Part 1 (easy): {}", answer);
     }
 
     // Scenario 3: Register only 2023 solvers
@@ -242,15 +242,15 @@ fn main() {
         .build();
 
     // Only 2023 solvers should be registered
-    if let Ok(mut solver) = registry.create_solver(2023, 1, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 1 Part 1: {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 1, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 1 Part 1: {}", answer);
     }
-    if let Ok(mut solver) = registry.create_solver(2023, 2, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 2 Part 1: {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 2, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 2 Part 1: {}", answer);
     }
     match registry.create_solver(2024, 3, input) {
         Ok(_) => println!("2024 Day 3 was registered (unexpected!)"),
@@ -268,9 +268,7 @@ fn main() {
                 .filter_map(|line| line.trim().parse().ok())
                 .collect();
             Ok(Box::new(aoc_solver::SolverInstance::<PluginDay1>::new(
-                2022,
-                1,
-                shared,
+                2022, 1, shared,
             )))
         })
         .expect("Failed to register manual solver");
@@ -280,15 +278,15 @@ fn main() {
         .build();
 
     // Both manual and plugin solvers should work
-    if let Ok(mut solver) = registry.create_solver(2022, 1, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2022 Day 1 Part 1 (manual): {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2022, 1, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2022 Day 1 Part 1 (manual): {}", answer);
     }
-    if let Ok(mut solver) = registry.create_solver(2023, 1, input) {
-        if let Ok(answer) = solver.solve(1) {
-            println!("2023 Day 1 Part 1 (plugin): {}", answer);
-        }
+    if let Ok(mut solver) = registry.create_solver(2023, 1, input)
+        && let Ok(answer) = solver.solve(1)
+    {
+        println!("2023 Day 1 Part 1 (plugin): {}", answer);
     }
 
     println!("\n=== Benefits of the Plugin System ===");

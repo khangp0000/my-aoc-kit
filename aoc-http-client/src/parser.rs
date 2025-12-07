@@ -3,48 +3,29 @@
 use crate::{SubmissionResult, error::AocError};
 use regex::Regex;
 use scraper::{Html, Selector};
-use std::cell::OnceCell;
 use std::time::Duration;
 
 /// Parser for AOC HTML responses with cached regex patterns and selectors
 #[derive(Clone, Debug)]
 pub(crate) struct ResponseParser {
-    user_id_regex: OnceCell<Regex>,
-    throttle_regex: OnceCell<Regex>,
-    main_selector: OnceCell<Selector>,
+    user_id_regex: Regex,
+    throttle_regex: Regex,
+    main_selector: Selector,
 }
 
 impl ResponseParser {
     /// Create a new parser with uninitialized caches
     pub fn new() -> Self {
         Self {
-            user_id_regex: OnceCell::new(),
-            throttle_regex: OnceCell::new(),
-            main_selector: OnceCell::new(),
+            user_id_regex: Regex::new(r"\(anonymous user #(\d+)\)").unwrap(),
+            throttle_regex: Regex::new(r"You have (.+?) left to wait\.").unwrap(),
+            main_selector: Selector::parse("main").unwrap(),
         }
-    }
-
-    /// Get or compile the user ID regex
-    fn user_id_regex(&self) -> &Regex {
-        self.user_id_regex
-            .get_or_init(|| Regex::new(r"\(anonymous user #(\d+)\)").unwrap())
-    }
-
-    /// Get or compile the throttle duration regex
-    fn throttle_regex(&self) -> &Regex {
-        self.throttle_regex
-            .get_or_init(|| Regex::new(r"You have (.+?) left to wait\.").unwrap())
-    }
-
-    /// Get or compile the main element selector
-    fn main_selector(&self) -> &Selector {
-        self.main_selector
-            .get_or_init(|| Selector::parse("main").unwrap())
     }
 
     /// Extract user ID from settings page HTML
     pub fn extract_user_id(&self, html: &str) -> Option<u64> {
-        let regex = self.user_id_regex();
+        let regex = &self.user_id_regex;
         let captures = regex.captures(html)?;
         let user_id_str = captures.get(1)?.as_str();
         user_id_str.parse::<u64>().ok()
@@ -53,7 +34,7 @@ impl ResponseParser {
     /// Extract text content from the main element of an HTML document
     pub fn extract_main_text(&self, html: &str) -> Result<String, AocError> {
         let document = Html::parse_document(html);
-        let selector = self.main_selector();
+        let selector = &self.main_selector;
 
         let main_element = document
             .select(selector)
@@ -65,7 +46,7 @@ impl ResponseParser {
 
     /// Extract throttle duration from response text
     fn extract_throttle_duration(&self, text: &str) -> Option<Duration> {
-        let regex = self.throttle_regex();
+        let regex = &self.throttle_regex;
         let captures = regex.captures(text)?;
         let duration_str = captures.get(1)?.as_str();
         humantime::parse_duration(duration_str).ok()

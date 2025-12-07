@@ -27,7 +27,7 @@ use crate::error::{ParseError, SolveError};
 /// ```
 pub trait AocParser {
     /// The shared data structure that holds parsed input and intermediate results.
-    /// 
+    ///
     /// Use any ownership strategy:
     /// - `Vec<T>` or custom structs for owned data (simplest, supports mutation)
     /// - `&'a str` for zero-copy borrowed data when no transformation is needed

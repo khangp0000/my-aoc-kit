@@ -2,7 +2,7 @@
 
 use crate::cli::{Args, ParallelizeBy};
 use crate::error::CliError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 /// Resolved runtime configuration
@@ -67,15 +67,14 @@ impl Config {
 }
 
 /// Expand ~ to home directory
-fn expand_tilde(path: &PathBuf) -> PathBuf {
-    if let Some(path_str) = path.to_str() {
-        if path_str.starts_with("~/") || path_str == "~" {
-            if let Some(home) = dirs::home_dir() {
-                return home.join(&path_str[2..]);
-            }
-        }
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Some(path_str) = path.to_str()
+        && (path_str.starts_with("~/") || path_str == "~")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(&path_str[2..]);
     }
-    path.clone()
+    path.to_path_buf()
 }
 
 /// Get number of CPUs
@@ -122,13 +121,13 @@ pub fn verify_session(session: &str, expected_user_id: Option<u64>) -> Result<u6
         .user_id
         .ok_or_else(|| CliError::Config("Invalid session: could not fetch user ID".to_string()))?;
 
-    if let Some(expected) = expected_user_id {
-        if actual_uid != expected {
-            return Err(CliError::UserIdMismatch {
-                expected,
-                actual: actual_uid,
-            });
-        }
+    if let Some(expected) = expected_user_id
+        && actual_uid != expected
+    {
+        return Err(CliError::UserIdMismatch {
+            expected,
+            actual: actual_uid,
+        });
     }
     Ok(actual_uid)
 }

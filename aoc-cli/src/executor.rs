@@ -10,7 +10,6 @@ use chrono::{DateTime, Local};
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::ops::RangeInclusive;
-use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
@@ -46,17 +45,21 @@ pub struct WorkItem {
 
 /// Parallel executor for running solvers
 pub struct Executor {
-    registry: Arc<SolverRegistry>,
-    cache: Arc<InputCache>,
+    sync_executor_config: SyncExecutorConfig,
+    thread_pool: rayon::ThreadPool,
+}
+
+pub struct SyncExecutorConfig {
+    registry: SolverRegistry,
+    cache: InputCache,
     client: Option<AocClient>,
-    session: Arc<Zeroizing<String>>,
+    session: Zeroizing<String>,
     submit: bool,
     auto_retry: bool,
     parallelize_by: ParallelizeBy,
     year_filter: Option<u16>,
     day_filter: Option<u8>,
     part_filter: Option<u8>,
-    thread_pool: rayon::ThreadPool,
 }
 
 impl Executor {
@@ -78,27 +81,30 @@ impl Executor {
             .map_err(|e| ExecutorError::ThreadPool(e.to_string()))?;
 
         Ok(Self {
-            registry: Arc::new(registry),
-            cache: Arc::new(InputCache::new(config.cache_dir.clone(), config.user_id)),
-            client,
-            session: Arc::new(config.session.clone()),
-            submit: config.submit,
-            auto_retry: config.auto_retry,
-            parallelize_by: config.parallelize_by,
-            year_filter: config.year_filter,
-            day_filter: config.day_filter,
-            part_filter: config.part_filter,
+            sync_executor_config: SyncExecutorConfig {
+                registry,
+                cache: InputCache::new(config.cache_dir.as_path().into(), config.user_id),
+                client,
+                session: config.session.clone(),
+                submit: config.submit,
+                auto_retry: config.auto_retry,
+                parallelize_by: config.parallelize_by,
+                year_filter: config.year_filter,
+                day_filter: config.day_filter,
+                part_filter: config.part_filter,
+            },
             thread_pool,
         })
     }
 
     /// Collect work items by filtering from registry metadata
     pub fn collect_work_items(&self) -> Vec<WorkItem> {
-        self.registry
+        let cfg = &self.sync_executor_config;
+        cfg.registry
             .storage()
             .iter_info()
-            .filter(|info| self.year_filter.map_or(true, |y| info.year == y))
-            .filter(|info| self.day_filter.map_or(true, |d| info.day == d))
+            .filter(|info| cfg.year_filter.is_none_or(|y| info.year == y))
+            .filter(|info| cfg.day_filter.is_none_or(|d| info.day == d))
             .map(|info| WorkItem {
                 year: info.year,
                 day: info.day,
@@ -109,10 +115,11 @@ impl Executor {
     }
 
     /// Filter parts based on config.part_filter and solver's max parts
+    #[allow(clippy::reversed_empty_ranges)]
     fn filter_parts(&self, max_parts: u8) -> RangeInclusive<u8> {
-        match self.part_filter {
+        match self.sync_executor_config.part_filter {
             Some(p) if p <= max_parts => p..=p,
-            Some(_) => 1..=0, // Empty range
+            Some(_) => 1..=0, // Empty range - intentional
             None => 1..=max_parts,
         }
     }
@@ -121,16 +128,7 @@ impl Executor {
     pub fn execute(&self, tx: Sender<SolverResult>) -> Result<(), ArcExecutorError> {
         let work_items = self.collect_work_items();
 
-        // Extract what we need for parallel execution (all Send + Sync)
-        let registry = self.registry.clone();
-        let cache = self.cache.clone();
-        let session = self.session.clone();
-        let client = self.client.clone();
-        let submit = self.submit;
-        let auto_retry = self.auto_retry;
-        let parallelize_by = self.parallelize_by;
-
-        match parallelize_by {
+        match self.sync_executor_config.parallelize_by {
             ParallelizeBy::Sequential => {
                 // No parallelization, execute all in order
                 let mut collected_error: Option<ArcExecutorError> = None;
@@ -150,30 +148,10 @@ impl Executor {
                     .map(|(_, group)| group.collect())
                     .collect();
 
-                self.execute_parallel_grouped(
-                    by_year,
-                    client,
-                    &tx,
-                    &registry,
-                    &cache,
-                    &session,
-                    submit,
-                    auto_retry,
-                    parallelize_by,
-                )
+                self.execute_parallel_grouped(by_year, &tx)
             }
             // Day and Part both parallelize across all work items (Part differs in run_solver_parallel behavior)
-            ParallelizeBy::Day | ParallelizeBy::Part => self.execute_parallel(
-                work_items,
-                client,
-                &tx,
-                &registry,
-                &cache,
-                &session,
-                submit,
-                auto_retry,
-                parallelize_by,
-            ),
+            ParallelizeBy::Day | ParallelizeBy::Part => self.execute_parallel(work_items, &tx),
         }
     }
 
@@ -181,32 +159,14 @@ impl Executor {
     fn execute_parallel(
         &self,
         work_items: Vec<WorkItem>,
-        client: Option<AocClient>,
         tx: &Sender<SolverResult>,
-        registry: &Arc<SolverRegistry>,
-        cache: &Arc<InputCache>,
-        session: &Arc<Zeroizing<String>>,
-        submit: bool,
-        auto_retry: bool,
-        parallelize_by: ParallelizeBy,
     ) -> Result<(), ArcExecutorError> {
+        let sync_executor_config = &self.sync_executor_config;
+
         self.thread_pool.install(|| {
             work_items
                 .into_par_iter()
-                .map_with(client, |client, work| {
-                    run_solver_parallel(
-                        &work,
-                        tx,
-                        registry,
-                        cache,
-                        client.as_ref(),
-                        session,
-                        submit,
-                        auto_retry,
-                        parallelize_by,
-                    )
-                    .err()
-                })
+                .map(|work| run_solver_parallel(&work, tx, sync_executor_config).err())
                 .reduce_with(|err1, err2| {
                     err1.map(|err1| ArcExecutorError::combine_opt(err2, err1))
                 })
@@ -219,32 +179,17 @@ impl Executor {
     fn execute_parallel_grouped(
         &self,
         groups: Vec<Vec<WorkItem>>,
-        client: Option<AocClient>,
         tx: &Sender<SolverResult>,
-        registry: &Arc<SolverRegistry>,
-        cache: &Arc<InputCache>,
-        session: &Arc<Zeroizing<String>>,
-        submit: bool,
-        auto_retry: bool,
-        parallelize_by: ParallelizeBy,
     ) -> Result<(), ArcExecutorError> {
+        let sync_executor_config = &self.sync_executor_config;
+
         self.thread_pool.install(|| {
             groups
                 .into_par_iter()
-                .map_with(client, |client, items| {
+                .map(|items| {
                     let mut err = None;
                     for work in items {
-                        if let Err(e) = run_solver_parallel(
-                            &work,
-                            tx,
-                            registry,
-                            cache,
-                            client.as_ref(),
-                            session,
-                            submit,
-                            auto_retry,
-                            parallelize_by,
-                        ) {
+                        if let Err(e) = run_solver_parallel(&work, tx, sync_executor_config) {
                             err = Some(ArcExecutorError::combine_opt(err, e))
                         }
                     }
@@ -264,17 +209,7 @@ impl Executor {
         work: &WorkItem,
         tx: &Sender<SolverResult>,
     ) -> Result<(), ArcExecutorError> {
-        run_solver_parallel(
-            work,
-            tx,
-            &self.registry,
-            &self.cache,
-            self.client.as_ref(),
-            &self.session,
-            self.submit,
-            self.auto_retry,
-            self.parallelize_by,
-        )
+        run_solver_parallel(work, tx, &self.sync_executor_config)
     }
 }
 
@@ -314,15 +249,11 @@ fn send_result(
 fn run_solver_parallel(
     work: &WorkItem,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverRegistry>,
-    cache: &Arc<InputCache>,
-    client: Option<&AocClient>,
-    session: &str,
-    submit: bool,
-    auto_retry: bool,
-    parallelize_by: ParallelizeBy,
+    sync_executor_config: &SyncExecutorConfig,
 ) -> Result<(), ArcExecutorError> {
-    let input = match get_input_parallel(work.year, work.day, cache, client, session) {
+    let parallelize_by = sync_executor_config.parallelize_by;
+
+    let input = match get_input_parallel(work, sync_executor_config) {
         Ok(input) => input,
         Err(e) => {
             // Send error result for each part
@@ -336,13 +267,9 @@ fn run_solver_parallel(
     };
 
     if matches!(parallelize_by, ParallelizeBy::Part) {
-        run_solver_parts_parallel(
-            work, &input, tx, registry, client, session, submit, auto_retry,
-        )
+        run_solver_parts_parallel(work, &input, tx, sync_executor_config)
     } else {
-        run_solver_sequential(
-            work, &input, tx, registry, client, session, submit, auto_retry,
-        )
+        run_solver_sequential(work, &input, tx, sync_executor_config)
     }
 }
 
@@ -351,25 +278,22 @@ fn run_solver_parts_parallel(
     work: &WorkItem,
     input: &str,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverRegistry>,
-    client: Option<&AocClient>,
-    session: &str,
-    submit: bool,
-    auto_retry: bool,
+    sync_executor_config: &SyncExecutorConfig,
 ) -> Result<(), ArcExecutorError> {
     let (result_tx, result_rx) = std::sync::mpsc::channel();
-    let registry_clone = Arc::clone(registry);
-    let input_owned = input.to_string();
     let (year, day) = (work.year, work.day);
+    let registry = &sync_executor_config.registry;
+    let session = &sync_executor_config.session;
+    let client = &sync_executor_config.client;
+    let submit = sync_executor_config.submit;
+    let auto_retry = sync_executor_config.auto_retry;
 
     // Solve parts in parallel
     work.parts
         .clone()
         .into_par_iter()
         .for_each_with(result_tx, |rtx, part| {
-            let mut solver = registry_clone
-                .create_solver(year, day, &input_owned)
-                .unwrap();
+            let mut solver = registry.create_solver(year, day, input).unwrap();
             rtx.send(solve_part_internal(year, day, part, &mut *solver))
                 .ok();
         });
@@ -389,7 +313,7 @@ fn run_solver_parts_parallel(
             .get_mut((next_part - start_part) as usize)
             .and_then(Option::take)
         {
-            send_result(tx, result, client, session, submit, auto_retry)?;
+            send_result(tx, result, client.as_ref(), session, submit, auto_retry)?;
             next_part += 1;
         }
     }
@@ -401,46 +325,45 @@ fn run_solver_sequential(
     work: &WorkItem,
     input: &str,
     tx: &Sender<SolverResult>,
-    registry: &Arc<SolverRegistry>,
-    client: Option<&AocClient>,
-    session: &str,
-    submit: bool,
-    auto_retry: bool,
+    sync_executor_config: &SyncExecutorConfig,
 ) -> Result<(), ArcExecutorError> {
     let (solve_tx, solve_rx) = std::sync::mpsc::channel();
-    let registry_clone = Arc::clone(registry);
     let (year, day) = (work.year, work.day);
     let parts = work.parts.clone();
-    let input_owned = input.to_string();
-
-    std::thread::spawn(move || {
-        let mut solver = registry_clone
-            .create_solver(year, day, &input_owned)
-            .unwrap();
-        for part in parts {
-            if solve_tx
-                .send(solve_part_internal(year, day, part, &mut *solver))
-                .is_err()
-            {
-                break;
+    let registry = &sync_executor_config.registry;
+    let session = &sync_executor_config.session;
+    let client = &sync_executor_config.client;
+    let submit = sync_executor_config.submit;
+    let auto_retry = sync_executor_config.auto_retry;
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            let mut solver = registry.create_solver(year, day, input).unwrap();
+            for part in parts {
+                if solve_tx
+                    .send(solve_part_internal(year, day, part, &mut *solver))
+                    .is_err()
+                {
+                    break;
+                }
             }
-        }
-    });
+        });
 
-    for result in solve_rx {
-        send_result(tx, result, client, session, submit, auto_retry)?;
-    }
-    Ok(())
+        for result in solve_rx {
+            send_result(tx, result, client.as_ref(), session, submit, auto_retry)?
+        }
+        Ok(())
+    })
 }
 
 /// Get input for a year/day, using cache or fetching (free function version)
 fn get_input_parallel(
-    year: u16,
-    day: u8,
-    cache: &InputCache,
-    client: Option<&AocClient>,
-    session: &str,
+    work: &WorkItem,
+    sync_executor_config: &SyncExecutorConfig,
 ) -> Result<String, ExecutorError> {
+    let (year, day) = (work.year, work.day);
+    let cache = &sync_executor_config.cache;
+    let session = &sync_executor_config.session;
+    let client = sync_executor_config.client.as_ref();
     // Check cache first
     if let Some(input) = cache
         .get(year, day)
@@ -457,10 +380,7 @@ fn get_input_parallel(
     let client = client.ok_or_else(|| ExecutorError::InputFetch {
         year,
         day,
-        source: Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "No HTTP client available",
-        )),
+        source: Box::new(std::io::Error::other("No HTTP client available")),
     })?;
 
     let input = client
@@ -560,12 +480,10 @@ fn submit_with_retry_internal(
                 return (Some(SubmissionOutcome::AlreadyCompleted), Some(total_wait));
             }
             Ok(aoc_http_client::SubmissionResult::Throttled { wait_time }) => {
-                if auto_retry {
-                    if let Some(wait) = wait_time {
-                        std::thread::sleep(wait);
-                        total_wait += wait;
-                        continue;
-                    }
+                if auto_retry && let Some(wait) = wait_time {
+                    std::thread::sleep(wait);
+                    total_wait += wait;
+                    continue;
                 }
                 return (
                     Some(SubmissionOutcome::Throttled { wait_time }),
