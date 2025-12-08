@@ -9,6 +9,7 @@ mod executor;
 mod output;
 
 // Import aoc-solutions to link the solver plugins
+#[allow(unused_imports)]
 use aoc_solutions as _;
 
 use aoc_solver::SolverRegistryBuilder;
@@ -77,6 +78,7 @@ fn run(args: Args) -> Result<(), error::CliError> {
         }
     }
 
+    println!("Using user ID: {}", config.user_id);
     run_executor(executor, config.quiet)
 }
 

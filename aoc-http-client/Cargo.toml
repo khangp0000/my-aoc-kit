@@ -5,12 +5,12 @@ edition = "2024"
 
 [dependencies]
 reqwest = { version = "0.12.24", features = ["blocking", "rustls-tls"], default-features = false }
-thiserror = "2.0.17"
-scraper = "0.24.0"
-regex = "1.12.2"
-humantime = "2.3.0"
-zeroize = "1.8.2"
+thiserror = "2.0"
+scraper = "0.25"
+regex = "1.12"
+humantime = "2.3"
+zeroize = "1.8"
 
 [dev-dependencies]
-proptest = "1.9.0"
-mockito = "1.6.1"
+proptest = "1.9"
+mockito = "1.7"
