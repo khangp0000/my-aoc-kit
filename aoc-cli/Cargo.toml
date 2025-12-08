@@ -15,11 +15,11 @@ aoc-http-client = { path = "../aoc-http-client" }
 aoc-solutions = { path = "../aoc-solutions" }
 clap = { version = "4.5", features = ["derive"] }
 rayon = "1.10"
-itertools = "0.13"
+itertools = "0.14"
 thiserror = "2.0"
 thiserror-ext = "0.3.0"
 zeroize = "1.8"
-dirs = "5.0"
+dirs = "6.0"
 rpassword = "7.3"
 chrono = "0.4"
 

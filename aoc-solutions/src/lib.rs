@@ -4,4 +4,8 @@
 //! Each solution uses the `AutoRegisterSolver` derive macro for automatic
 //! plugin registration with the solver framework.
 
+#[cfg(feature = "stress_test")]
 pub mod stress_test;
+
+#[cfg(feature = "my-solutions")]
+pub mod my_solutions;

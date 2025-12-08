@@ -1,13 +1,19 @@
 [package]
 name = "aoc-solutions"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Advent of Code puzzle solutions with automatic registration"
 license = "MIT"
 
 [dependencies]
 aoc-solver = { path = "../aoc-solver" }
 aoc-solver-macros = { path = "../aoc-solver-macros" }
+anyhow = "1.0"
 
 [dev-dependencies]
 proptest = "1.5"
+
+[features]
+default = ["my-solutions"]
+my-solutions = []
+stress_test = []
