@@ -5,3 +5,4 @@
 //! plugin registration with the solver framework.
 
 pub mod stress_test;
+pub mod utils;

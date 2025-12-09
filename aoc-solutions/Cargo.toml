@@ -8,6 +8,8 @@ license = "MIT"
 [dependencies]
 aoc-solver = { path = "../aoc-solver" }
 aoc-solver-macros = { path = "../aoc-solver-macros" }
+rayon = "1.10"
+dashmap = "6"
 
 [dev-dependencies]
 proptest = "1.5"
