@@ -231,7 +231,7 @@ fn test_collatz_known_values() {
 fn test_parallel_collatz_matches_sequential() {
     // Verify parallel cache produces same results as sequential
     let seq_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
-    let par_cache = DashMapDpCache::new(collatz_deps, collatz_compute);
+    let par_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
 
     for n in 1..=100u64 {
         assert_eq!(
@@ -246,7 +246,7 @@ fn test_parallel_collatz_matches_sequential() {
 #[test]
 fn test_dashmap_collatz() {
     // Test DashMapDpCache
-    let par_cache = DashMapDpCache::new(collatz_deps, collatz_compute);
+    let par_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
 
     assert_eq!(par_cache.get(&1u64), 0);
     assert_eq!(par_cache.get(&2u64), 1);
@@ -326,7 +326,7 @@ fn test_trait_based_collatz_sequential() {
 
 #[test]
 fn test_trait_based_collatz_parallel() {
-    let cache = DashMapDpCache::with_problem(Collatz);
+    let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
 
     assert_eq!(cache.get(&1), 0);
     assert_eq!(cache.get(&2), 1);
@@ -389,5 +389,117 @@ fn test_trait_based_matches_closure_based() {
 
     for n in 0..=20 {
         assert_eq!(trait_cache.get(&n), closure_cache.get(&n), "Mismatch at n={}", n);
+    }
+}
+
+// =============================================================================
+// RwLockDpCache tests
+// =============================================================================
+
+#[test]
+fn test_rwlock_collatz() {
+    // Test RwLockDpCache
+    let par_cache =
+        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+
+    assert_eq!(par_cache.get(&1u64), 0);
+    assert_eq!(par_cache.get(&2u64), 1);
+    assert_eq!(par_cache.get(&3u64), 7);
+    assert_eq!(par_cache.get(&27u64), 111);
+}
+
+#[test]
+fn test_rwlock_collatz_matches_sequential() {
+    // Verify RwLock parallel cache produces same results as sequential
+    let seq_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let par_cache =
+        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+
+    for n in 1..=100u64 {
+        assert_eq!(
+            seq_cache.get(&n),
+            par_cache.get(&n),
+            "Mismatch at n={}",
+            n
+        );
+    }
+}
+
+#[test]
+fn test_trait_based_collatz_rwlock() {
+    let cache = ParallelDpCache::with_problem(RwLockHashMapBackend::new(), Collatz);
+
+    assert_eq!(cache.get(&1), 0);
+    assert_eq!(cache.get(&2), 1);
+    assert_eq!(cache.get(&3), 7);
+    assert_eq!(cache.get(&27), 111);
+}
+
+// =============================================================================
+// ParallelBackend tests
+// =============================================================================
+
+#[test]
+fn test_dashmap_backend_get_or_insert() {
+    let backend: DashMapBackend<String, i32> = DashMapBackend::new();
+
+    // Insert value
+    let value = backend.get_or_insert("key1".to_string(), || 42);
+    assert_eq!(value, 42);
+
+    // Get same key again - should return cached value, not recompute
+    let value = backend.get_or_insert("key1".to_string(), || 999);
+    assert_eq!(value, 42);
+
+    // Get returns the cached value
+    assert_eq!(backend.get(&"key1".to_string()), Some(42));
+
+    // Get returns None for uncached key
+    assert_eq!(backend.get(&"key2".to_string()), None);
+
+    // Insert different key - should not affect existing
+    let value = backend.get_or_insert("key2".to_string(), || 100);
+    assert_eq!(value, 100);
+    assert_eq!(backend.get(&"key1".to_string()), Some(42));
+}
+
+#[test]
+fn test_rwlock_backend_get_or_insert() {
+    let backend: RwLockHashMapBackend<String, i32> = RwLockHashMapBackend::new();
+
+    // Insert value
+    let value = backend.get_or_insert("key1".to_string(), || 42);
+    assert_eq!(value, 42);
+
+    // Get same key again - should return cached value, not recompute
+    let value = backend.get_or_insert("key1".to_string(), || 999);
+    assert_eq!(value, 42);
+
+    // Get returns the cached value
+    assert_eq!(backend.get(&"key1".to_string()), Some(42));
+
+    // Get returns None for uncached key
+    assert_eq!(backend.get(&"key2".to_string()), None);
+
+    // Insert different key - should not affect existing
+    let value = backend.get_or_insert("key2".to_string(), || 100);
+    assert_eq!(value, 100);
+    assert_eq!(backend.get(&"key1".to_string()), Some(42));
+}
+
+#[test]
+fn test_all_parallel_backends_match() {
+    // Verify all parallel backends produce same results
+    let dashmap_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
+    let rwlock_cache =
+        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+
+    for n in 1..=100u64 {
+        assert_eq!(
+            dashmap_cache.get(&n),
+            rwlock_cache.get(&n),
+            "Mismatch at n={}",
+            n
+        );
     }
 }

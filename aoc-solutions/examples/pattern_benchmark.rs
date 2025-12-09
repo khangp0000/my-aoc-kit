@@ -12,7 +12,9 @@
 //!
 //! Returns None if the result would overflow u64.
 
-use aoc_solutions::utils::dp_cache::{DashMapDpCache, DpCache, HashMapBackend, VecBackend};
+use aoc_solutions::utils::dp_cache::{
+    DashMapBackend, DpCache, HashMapBackend, ParallelDpCache, RwLockHashMapBackend, VecBackend,
+};
 use rayon::prelude::*;
 use std::time::Instant;
 
@@ -110,32 +112,67 @@ fn main() {
     let hashmap_time = start.elapsed();
     println!("HashMapBackend (sequential): {:?}", hashmap_time);
 
-    // 3. DashMapDpCache (parallel deps)
-    println!("Running DashMapDpCache (parallel)...");
+    // 3. ParallelDpCache with DashMapBackend (parallel deps)
+    println!("Running DashMapBackend (parallel)...");
     let start = Instant::now();
     let mut dashmap_results: Vec<Option<u64>> = Vec::with_capacity(test_cases.len());
     for &(i, j) in &test_cases {
-        let cache = DashMapDpCache::new(pattern_deps, make_pattern_compute(i));
+        let cache =
+            ParallelDpCache::new(DashMapBackend::new(), pattern_deps, make_pattern_compute(i));
         let result = cache.get(&j);
         dashmap_results.push(result);
     }
     let dashmap_time = start.elapsed();
-    println!("DashMapDpCache (parallel):   {:?}", dashmap_time);
+    println!("DashMapBackend (parallel):   {:?}", dashmap_time);
 
-    // 4. DashMapDpCache with parallel iteration
-    println!("Running DashMapDpCache + par_iter...");
+    // 4. ParallelDpCache with DashMapBackend + parallel iteration
+    println!("Running DashMapBackend + par_iter...");
     let start = Instant::now();
     let dashmap_par_results: Vec<Option<u64>> = test_cases
         .par_iter()
         .map(|&(i, j)| {
-            let cache = DashMapDpCache::new(pattern_deps, make_pattern_compute(i));
+            let cache =
+                ParallelDpCache::new(DashMapBackend::new(), pattern_deps, make_pattern_compute(i));
             cache.get(&j)
         })
         .collect();
     let dashmap_par_time = start.elapsed();
-    println!("DashMapDpCache + par_iter:   {:?}", dashmap_par_time);
+    println!("DashMapBackend + par_iter:   {:?}", dashmap_par_time);
 
-    // 5. Direct computation for verification
+    // 5. ParallelDpCache with RwLockHashMapBackend (parallel deps)
+    println!("Running RwLockHashMapBackend (parallel)...");
+    let start = Instant::now();
+    let mut rwlock_results: Vec<Option<u64>> = Vec::with_capacity(test_cases.len());
+    for &(i, j) in &test_cases {
+        let cache = ParallelDpCache::new(
+            RwLockHashMapBackend::new(),
+            pattern_deps,
+            make_pattern_compute(i),
+        );
+        let result = cache.get(&j);
+        rwlock_results.push(result);
+    }
+    let rwlock_time = start.elapsed();
+    println!("RwLockHashMapBackend (parallel): {:?}", rwlock_time);
+
+    // 6. ParallelDpCache with RwLockHashMapBackend + parallel iteration
+    println!("Running RwLockHashMapBackend + par_iter...");
+    let start = Instant::now();
+    let rwlock_par_results: Vec<Option<u64>> = test_cases
+        .par_iter()
+        .map(|&(i, j)| {
+            let cache = ParallelDpCache::new(
+                RwLockHashMapBackend::new(),
+                pattern_deps,
+                make_pattern_compute(i),
+            );
+            cache.get(&j)
+        })
+        .collect();
+    let rwlock_par_time = start.elapsed();
+    println!("RwLockHashMapBackend + par_iter: {:?}", rwlock_par_time);
+
+    // 7. Direct computation for verification
     println!("\nVerifying against direct computation...");
     let direct_results: Vec<Option<u64>> = test_cases
         .iter()
@@ -150,13 +187,20 @@ fn main() {
         let hashmap_r = hashmap_results[idx];
         let dashmap_r = dashmap_results[idx];
         let dashmap_par_r = dashmap_par_results[idx];
+        let rwlock_r = rwlock_results[idx];
+        let rwlock_par_r = rwlock_par_results[idx];
 
-        if direct != vec_r || direct != hashmap_r || direct != dashmap_r || direct != dashmap_par_r
+        if direct != vec_r
+            || direct != hashmap_r
+            || direct != dashmap_r
+            || direct != dashmap_par_r
+            || direct != rwlock_r
+            || direct != rwlock_par_r
         {
             if mismatches < 5 {
                 println!(
-                    "Mismatch at i={}, j={}: direct={:?}, vec={:?}, hashmap={:?}, dashmap={:?}, dashmap_par={:?}",
-                    i, j, direct, vec_r, hashmap_r, dashmap_r, dashmap_par_r
+                    "Mismatch at i={}, j={}: direct={:?}, vec={:?}, hashmap={:?}, dashmap={:?}, dashmap_par={:?}, rwlock={:?}, rwlock_par={:?}",
+                    i, j, direct, vec_r, hashmap_r, dashmap_r, dashmap_par_r, rwlock_r, rwlock_par_r
                 );
             }
             all_match = false;
@@ -198,4 +242,6 @@ fn main() {
     println!("  HashMapBackend (sequential): {:?}", hashmap_time);
     println!("  DashMapDpCache (parallel):   {:?}", dashmap_time);
     println!("  DashMapDpCache + par_iter:   {:?}", dashmap_par_time);
+    println!("  RwLockDpCache (parallel):    {:?}", rwlock_time);
+    println!("  RwLockDpCache + par_iter:    {:?}", rwlock_par_time);
 }

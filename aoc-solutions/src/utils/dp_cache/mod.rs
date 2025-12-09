@@ -6,18 +6,25 @@
 //! # Cache Types
 //!
 //! - [`DpCache`]: Single-threaded cache with `RefCell` for interior mutability
-//! - [`DashMapDpCache`]: Thread-safe cache with parallel dependency resolution using Rayon
+//! - [`ParallelDpCache`]: Thread-safe cache with parallel dependency resolution using Rayon
+//! - [`DashMapDpCache`]: Type alias for `ParallelDpCache` with `DashMapBackend`
+//! - [`RwLockDpCache`]: Type alias for `ParallelDpCache` with `RwLockHashMapBackend`
 //!
-//! # Backend Types (for `DpCache`)
+//! # Backend Types
 //!
+//! Sequential backends (for `DpCache`):
 //! - [`VecBackend`]: Efficient for dense, sequential `usize` indices
 //! - [`HashMapBackend`]: Supports arbitrary hashable index types
+//!
+//! Parallel backends (for `ParallelDpCache`):
+//! - [`DashMapBackend`]: Lock-free concurrent access using DashMap's sharded locking
+//! - [`RwLockHashMapBackend`]: Simple RwLock around HashMap, good for read-heavy workloads
 //!
 //! # Warning: Cycle Behavior
 //!
 //! **These caches do NOT support cycle detection.** If the dependency graph contains cycles:
 //! - `DpCache`: Stack overflow or infinite loop
-//! - `DashMapDpCache`: Deadlock or stack overflow
+//! - `ParallelDpCache`: Deadlock or stack overflow
 //!
 //! **Users MUST ensure that dependencies form a DAG (Directed Acyclic Graph).**
 //!
@@ -46,7 +53,7 @@
 //! # Example: Trait-based Parallel
 //!
 //! ```rust
-//! use aoc_solutions::utils::dp_cache::{DashMapDpCache, DpProblem};
+//! use aoc_solutions::utils::dp_cache::{ParallelDpCache, DashMapBackend, DpProblem};
 //!
 //! struct Collatz;
 //!
@@ -61,7 +68,7 @@
 //!     }
 //! }
 //!
-//! let cache = DashMapDpCache::with_problem(Collatz);
+//! let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
 //! assert_eq!(cache.get(&27), 111);
 //! ```
 //!
@@ -91,10 +98,15 @@ mod cache;
 mod parallel;
 mod problem;
 
-pub use backend::{Backend, HashMapBackend, VecBackend};
+pub use backend::{
+    Backend, DashMapBackend, HashMapBackend, ParallelBackend, RwLockHashMapBackend, VecBackend,
+};
 pub use cache::DpCache;
-pub use parallel::DashMapDpCache;
+pub use parallel::ParallelDpCache;
 pub use problem::{DpProblem, ParallelDpProblem};
+
+// Type aliases for convenience (re-exported from parallel module)
+pub use parallel::{DashMapDpCache, RwLockDpCache};
 
 #[cfg(test)]
 mod tests;

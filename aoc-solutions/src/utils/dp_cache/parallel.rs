@@ -1,25 +1,25 @@
-//! Parallel DP cache implementation using DashMap.
+//! Parallel DP cache implementation with pluggable backends.
 
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use rayon::prelude::*;
 use rayon::ThreadPool;
 
+use super::backend::{DashMapBackend, ParallelBackend, RwLockHashMapBackend};
 use super::problem::ParallelDpProblem;
 
-/// A parallel dynamic programming cache using DashMap for storage.
+/// A parallel dynamic programming cache with pluggable backend storage.
 ///
-/// This cache uses DashMap directly for storage, avoiding the lifetime issues
-/// that arise from storing `OnceLock` references. It's designed for use cases
-/// where the index type is hashable and you want lock-free concurrent access.
+/// This cache resolves dependencies in parallel using Rayon and supports
+/// different backend storage implementations.
 ///
 /// # Type Parameters
 ///
 /// - `I`: Index type (must implement `Hash + Eq + Clone + Send + Sync`)
 /// - `K`: Value type (must implement `Clone + Send + Sync`)
+/// - `B`: Backend type (must implement `ParallelBackend<I, K>`)
 /// - `P`: Problem type (must implement `ParallelDpProblem<I, K>`)
 ///
 /// # Warning: No Cycle Detection
@@ -28,10 +28,10 @@ use super::problem::ParallelDpProblem;
 /// the behavior is undefined and may result in deadlock or stack overflow.
 /// **Users MUST ensure dependencies form a DAG.**
 ///
-/// # Example (trait-based)
+/// # Example (with DashMapBackend)
 ///
 /// ```rust
-/// use aoc_solutions::utils::dp_cache::{DashMapDpCache, DpProblem};
+/// use aoc_solutions::utils::dp_cache::{ParallelDpCache, DashMapBackend, DpProblem};
 ///
 /// struct Collatz;
 ///
@@ -46,61 +46,43 @@ use super::problem::ParallelDpProblem;
 ///     }
 /// }
 ///
-/// let cache = DashMapDpCache::with_problem(Collatz);
+/// let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
 /// assert_eq!(cache.get(&27), 111);
 /// ```
-///
-/// # Example (closure-based)
-///
-/// ```rust
-/// use aoc_solutions::utils::dp_cache::DashMapDpCache;
-///
-/// let cache = DashMapDpCache::new(
-///     |n: &u64| {
-///         if *n <= 1 { vec![] }
-///         else if n % 2 == 0 { vec![n / 2] }
-///         else { vec![3 * n + 1] }
-///     },
-///     |_n: &u64, deps: Vec<u64>| {
-///         if deps.is_empty() { 0 }
-///         else { 1 + deps[0] }
-///     },
-/// );
-///
-/// assert_eq!(cache.get(&27), 111);
-/// ```
-pub struct DashMapDpCache<I, K, P>
+pub struct ParallelDpCache<I, K, B, P>
 where
     I: Hash + Eq + Clone + Send + Sync,
     K: Clone + Send + Sync,
+    B: ParallelBackend<I, K>,
     P: ParallelDpProblem<I, K>,
 {
-    data: DashMap<I, K>,
+    backend: B,
     problem: P,
     pool: Option<Arc<ThreadPool>>,
     _phantom: PhantomData<(I, K)>,
 }
 
-impl<I, K, P> DashMapDpCache<I, K, P>
+impl<I, K, B, P> ParallelDpCache<I, K, B, P>
 where
     I: Hash + Eq + Clone + Send + Sync,
     K: Clone + Send + Sync,
+    B: ParallelBackend<I, K>,
     P: ParallelDpProblem<I, K>,
 {
-    /// Creates a new DashMapDpCache with the given problem definition.
-    pub fn with_problem(problem: P) -> Self {
+    /// Creates a new ParallelDpCache with the given backend and problem definition.
+    pub fn with_problem(backend: B, problem: P) -> Self {
         Self {
-            data: DashMap::new(),
+            backend,
             problem,
             pool: None,
             _phantom: PhantomData,
         }
     }
 
-    /// Creates a new DashMapDpCache with a custom Rayon thread pool.
-    pub fn with_problem_and_pool(problem: P, pool: Arc<ThreadPool>) -> Self {
+    /// Creates a new ParallelDpCache with a custom Rayon thread pool.
+    pub fn with_problem_and_pool(backend: B, problem: P, pool: Arc<ThreadPool>) -> Self {
         Self {
-            data: DashMap::new(),
+            backend,
             problem,
             pool: Some(pool),
             _phantom: PhantomData,
@@ -112,15 +94,10 @@ where
     /// If the value is already cached, returns a clone of the cached value.
     /// Otherwise, resolves all dependencies in parallel using Rayon, computes
     /// the value using the compute function, caches it, and returns a clone.
-    ///
-    /// Note: We cannot use `or_insert_with` here because it holds a write lock
-    /// on the DashMap shard while the closure executes. If the closure calls
-    /// `self.get()` recursively and hits the same shard, it would deadlock.
-    /// Instead, we compute the value first (releasing any locks), then insert.
     pub fn get(&self, index: &I) -> K {
         // Fast path: check if already computed
-        if let Some(entry) = self.data.get(index) {
-            return entry.value().clone();
+        if let Some(value) = self.backend.get(index) {
+            return value;
         }
 
         // Get dependencies (no locks held)
@@ -138,13 +115,10 @@ where
             None => resolve_deps(),
         };
 
-        // Insert using or_insert_with - only compute is inside the closure
+        // Insert using get_or_insert - only compute is inside the closure
         // dep_values is already resolved outside, so no recursive calls happen while holding the lock
-        self.data
-            .entry(index.clone())
-            .or_insert_with(|| self.problem.compute(index, dep_values))
-            .value()
-            .clone()
+        self.backend
+            .get_or_insert(index.clone(), || self.problem.compute(index, dep_values))
     }
 }
 
@@ -174,23 +148,29 @@ where
 }
 
 // Dummy type for the default generic parameter
-type DummyParallelProblem<I, K> = ParallelClosureProblem<I, K, fn(&I) -> Vec<I>, fn(&I, Vec<K>) -> K>;
+type DummyParallelProblem<I, K> =
+    ParallelClosureProblem<I, K, fn(&I) -> Vec<I>, fn(&I, Vec<K>) -> K>;
 
-impl<I, K> DashMapDpCache<I, K, DummyParallelProblem<I, K>>
+impl<I, K, B> ParallelDpCache<I, K, B, DummyParallelProblem<I, K>>
 where
     I: Hash + Eq + Clone + Send + Sync,
     K: Clone + Send + Sync,
+    B: ParallelBackend<I, K>,
 {
-    /// Creates a new DashMapDpCache with closure-based dependency and compute functions.
+    /// Creates a new ParallelDpCache with closure-based dependency and compute functions.
     ///
     /// This is a convenience constructor for the closure-based API.
-    pub fn new<D, C>(dep_fn: D, compute_fn: C) -> DashMapDpCache<I, K, ParallelClosureProblem<I, K, D, C>>
+    pub fn new<D, C>(
+        backend: B,
+        dep_fn: D,
+        compute_fn: C,
+    ) -> ParallelDpCache<I, K, B, ParallelClosureProblem<I, K, D, C>>
     where
         D: Fn(&I) -> Vec<I> + Send + Sync,
         C: Fn(&I, Vec<K>) -> K + Send + Sync,
     {
-        DashMapDpCache {
-            data: DashMap::new(),
+        ParallelDpCache {
+            backend,
             problem: ParallelClosureProblem {
                 dep_fn,
                 compute_fn,
@@ -201,18 +181,19 @@ where
         }
     }
 
-    /// Creates a new DashMapDpCache with closure-based functions and a custom thread pool.
+    /// Creates a new ParallelDpCache with closure-based functions and a custom thread pool.
     pub fn with_pool<D, C>(
+        backend: B,
         dep_fn: D,
         compute_fn: C,
         pool: Arc<ThreadPool>,
-    ) -> DashMapDpCache<I, K, ParallelClosureProblem<I, K, D, C>>
+    ) -> ParallelDpCache<I, K, B, ParallelClosureProblem<I, K, D, C>>
     where
         D: Fn(&I) -> Vec<I> + Send + Sync,
         C: Fn(&I, Vec<K>) -> K + Send + Sync,
     {
-        DashMapDpCache {
-            data: DashMap::new(),
+        ParallelDpCache {
+            backend,
             problem: ParallelClosureProblem {
                 dep_fn,
                 compute_fn,
@@ -223,3 +204,39 @@ where
         }
     }
 }
+
+// =============================================================================
+// Type Aliases for Convenience
+// =============================================================================
+
+/// A parallel DP cache using DashMap as the backend.
+///
+/// This is a convenience type alias for the common case of using DashMap.
+///
+/// # Example
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{DashMapDpCache, DashMapBackend, DpProblem, ParallelDpCache};
+///
+/// struct Collatz;
+///
+/// impl DpProblem<u64, u64> for Collatz {
+///     fn deps(&self, n: &u64) -> Vec<u64> {
+///         if *n <= 1 { vec![] }
+///         else if n % 2 == 0 { vec![n / 2] }
+///         else { vec![3 * n + 1] }
+///     }
+///     fn compute(&self, _n: &u64, deps: Vec<u64>) -> u64 {
+///         if deps.is_empty() { 0 } else { 1 + deps[0] }
+///     }
+/// }
+///
+/// let cache: DashMapDpCache<_, _, _> = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
+/// assert_eq!(cache.get(&27), 111);
+/// ```
+pub type DashMapDpCache<I, K, P> = ParallelDpCache<I, K, DashMapBackend<I, K>, P>;
+
+/// A parallel DP cache using RwLock<HashMap> as the backend.
+///
+/// This is a convenience type alias for using RwLock<HashMap>.
+pub type RwLockDpCache<I, K, P> = ParallelDpCache<I, K, RwLockHashMapBackend<I, K>, P>;
