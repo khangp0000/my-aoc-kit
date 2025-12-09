@@ -42,7 +42,7 @@ use super::problem::DpProblem;
 /// }
 ///
 /// let cache = DpCache::with_problem(VecBackend::new(), Factorial);
-/// assert_eq!(cache.get(5), 120);
+/// assert_eq!(cache.get(&5), 120);
 /// ```
 ///
 /// # Example (closure-based)
@@ -58,7 +58,7 @@ use super::problem::DpProblem;
 ///     },
 /// );
 ///
-/// assert_eq!(cache.get(5), 120);
+/// assert_eq!(cache.get(&5), 120);
 /// ```
 pub struct DpCache<I, K, B, P>
 where
@@ -99,7 +99,7 @@ where
     ///
     /// # Arguments
     ///
-    /// - `index`: The index to retrieve the value for
+    /// - `index`: A reference to the index to retrieve the value for
     ///
     /// # Returns
     ///
@@ -108,18 +108,20 @@ where
     /// # Panics
     ///
     /// May panic or cause undefined behavior if the dependency graph contains cycles.
-    pub fn get(&self, index: I) -> K {
-        // Ensure the index exists in the backend (borrow_mut, then drop)
-        self.backend.borrow_mut().ensure_index(index.clone());
+    pub fn get(&self, index: &I) -> K {
+        // Fast path: check if already computed
+        if let Some(value) = self.backend.borrow().get(index) {
+            return value.clone();
+        }
 
-        // Get dependencies and resolve them recursively
-        let deps = self.problem.deps(&index);
-        let dep_values: Vec<K> = deps.into_iter().map(|dep| self.get(dep)).collect();
+        // Get dependencies and resolve them recursively (no borrow held)
+        let deps = self.problem.deps(index);
+        let dep_values: Vec<K> = deps.into_iter().map(|dep| self.get(&dep)).collect();
 
-        // Borrow backend (shared), get OnceCell, initialize if needed, clone result
-        let backend = self.backend.borrow();
-        let cell = backend.get(&index);
-        cell.get_or_init(|| self.problem.compute(&index, dep_values))
+        // Store the value, computing inside the closure only if not already cached
+        self.backend
+            .borrow_mut()
+            .get_or_insert(index.clone(), || self.problem.compute(index, dep_values))
             .clone()
     }
 }
@@ -164,7 +166,11 @@ where
     /// - `backend`: The storage backend for cached values
     /// - `dep_fn`: A function that returns the indices this index depends on
     /// - `compute_fn`: A function that computes the value given the index and resolved dependency values
-    pub fn new<D, C>(backend: B, dep_fn: D, compute_fn: C) -> DpCache<I, K, B, ClosureProblem<I, K, D, C>>
+    pub fn new<D, C>(
+        backend: B,
+        dep_fn: D,
+        compute_fn: C,
+    ) -> DpCache<I, K, B, ClosureProblem<I, K, D, C>>
     where
         D: Fn(&I) -> Vec<I>,
         C: Fn(&I, Vec<K>) -> K,

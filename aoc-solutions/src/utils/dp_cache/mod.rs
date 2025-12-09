@@ -40,7 +40,7 @@
 //! }
 //!
 //! let cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
-//! assert_eq!(cache.get(10), 55);
+//! assert_eq!(cache.get(&10), 55);
 //! ```
 //!
 //! # Example: Trait-based Parallel
@@ -62,7 +62,7 @@
 //! }
 //!
 //! let cache = DashMapDpCache::with_problem(Collatz);
-//! assert_eq!(cache.get(27), 111);
+//! assert_eq!(cache.get(&27), 111);
 //! ```
 //!
 //! # Example: Closure-based API
@@ -83,7 +83,7 @@
 //!     },
 //! );
 //!
-//! assert_eq!(cache.get(10), 55);
+//! assert_eq!(cache.get(&10), 55);
 //! ```
 
 mod backend;

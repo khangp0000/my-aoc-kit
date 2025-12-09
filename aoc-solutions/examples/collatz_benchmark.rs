@@ -70,14 +70,14 @@ fn main() {
     // 1. HashMapBackend with DpCache (sequential)
     let start = Instant::now();
     let hashmap_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
-    let hashmap_results: Vec<u64> = inputs.iter().map(|&n| hashmap_cache.get(n)).collect();
+    let hashmap_results: Vec<u64> = inputs.iter().map(|n| hashmap_cache.get(n)).collect();
     let hashmap_time = start.elapsed();
     println!("HashMapBackend (sequential):       {:?}", hashmap_time);
 
     // 2. DashMapDpCache (parallel, sequential iteration over inputs)
     let start = Instant::now();
     let dashmap_cache = DashMapDpCache::new(collatz_deps, collatz_compute);
-    let dashmap_results: Vec<u64> = inputs.iter().map(|&n| dashmap_cache.get(n)).collect();
+    let dashmap_results: Vec<u64> = inputs.iter().map(|n| dashmap_cache.get(n)).collect();
     let dashmap_time = start.elapsed();
     println!("DashMapDpCache (parallel):         {:?}", dashmap_time);
 
@@ -86,7 +86,7 @@ fn main() {
     let dashmap_cache2 = DashMapDpCache::new(collatz_deps, collatz_compute);
     let dashmap_par_results: Vec<u64> = inputs
         .par_iter()
-        .map(|&n| dashmap_cache2.get(n))
+        .map(|n| dashmap_cache2.get(n))
         .collect();
     let dashmap_par_time = start.elapsed();
     println!("DashMapDpCache + par_iter:         {:?}", dashmap_par_time);

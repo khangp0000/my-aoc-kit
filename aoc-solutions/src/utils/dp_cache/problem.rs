@@ -31,7 +31,7 @@
 /// }
 ///
 /// let cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
-/// assert_eq!(cache.get(10), 55);
+/// assert_eq!(cache.get(&10), 55);
 /// ```
 pub trait DpProblem<I, K> {
     /// Returns the indices that this index depends on.

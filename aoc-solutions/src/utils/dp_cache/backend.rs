@@ -1,6 +1,5 @@
 //! Storage backends for the DP cache.
 
-use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -12,24 +11,22 @@ use std::hash::Hash;
 ///
 /// # Contract
 ///
-/// - `ensure_index` must be called before `get` for any index
-/// - `ensure_index` is idempotent: calling it on an existing index preserves the value
-/// - `get` panics if called on an index that was never ensured
+/// - `get` returns `None` if the index has not been computed yet
+/// - `get_or_insert` computes and stores the value if not present, then returns a reference
+/// - The compute function passed to `get_or_insert` should not require `&self` reference
+///   to the cache (dependencies should already be resolved)
 pub trait Backend<I, K> {
-    /// Returns a reference to the OnceCell for the given index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index has not been ensured via `ensure_index`.
-    fn get(&self, index: &I) -> &OnceCell<K>;
+    /// Returns a reference to the cached value for the given index, if it exists.
+    fn get(&self, index: &I) -> Option<&K>;
 
-    /// Ensures an entry exists for the given index.
+    /// Returns the cached value, or computes and stores it using the provided function.
     ///
-    /// If the index is new, creates an empty `OnceCell`.
-    /// If the index already exists, leaves the existing entry unchanged.
-    fn ensure_index(&mut self, index: I);
+    /// The compute function receives no arguments - all dependencies should be
+    /// captured in the closure before calling this method.
+    fn get_or_insert<F>(&mut self, index: I, compute: F) -> &K
+    where
+        F: FnOnce() -> K;
 }
-
 
 /// A Vec-based backend for usize indices.
 ///
@@ -37,7 +34,7 @@ pub trait Backend<I, K> {
 /// The Vec automatically grows to accommodate new indices.
 #[derive(Debug)]
 pub struct VecBackend<K> {
-    data: Vec<OnceCell<K>>,
+    data: Vec<Option<K>>,
 }
 
 impl<K> VecBackend<K> {
@@ -61,17 +58,27 @@ impl<K> Default for VecBackend<K> {
 }
 
 impl<K> Backend<usize, K> for VecBackend<K> {
-    fn get(&self, index: &usize) -> &OnceCell<K> {
-        &self.data[*index]
+    fn get(&self, index: &usize) -> Option<&K> {
+        self.data.get(*index).and_then(|opt| opt.as_ref())
     }
 
-    fn ensure_index(&mut self, index: usize) {
+    fn get_or_insert<F>(&mut self, index: usize, compute: F) -> &K
+    where
+        F: FnOnce() -> K,
+    {
+        // Ensure the vec is large enough
         if index >= self.data.len() {
-            self.data.resize_with(index + 1, OnceCell::new);
+            self.data.resize_with(index + 1, || None);
         }
+
+        // Compute if not present
+        if self.data[index].is_none() {
+            self.data[index] = Some(compute());
+        }
+
+        self.data[index].as_ref().unwrap()
     }
 }
-
 
 /// A HashMap-based backend for arbitrary hashable indices.
 ///
@@ -79,7 +86,7 @@ impl<K> Backend<usize, K> for VecBackend<K> {
 /// It is suitable for sparse indices or non-integer index types.
 #[derive(Debug)]
 pub struct HashMapBackend<I, K> {
-    data: HashMap<I, OnceCell<K>>,
+    data: HashMap<I, K>,
 }
 
 impl<I, K> HashMapBackend<I, K> {
@@ -98,11 +105,14 @@ impl<I, K> Default for HashMapBackend<I, K> {
 }
 
 impl<I: Hash + Eq, K> Backend<I, K> for HashMapBackend<I, K> {
-    fn get(&self, index: &I) -> &OnceCell<K> {
-        self.data.get(index).expect("index not ensured")
+    fn get(&self, index: &I) -> Option<&K> {
+        self.data.get(index)
     }
 
-    fn ensure_index(&mut self, index: I) {
-        self.data.entry(index).or_insert_with(OnceCell::new);
+    fn get_or_insert<F>(&mut self, index: I, compute: F) -> &K
+    where
+        F: FnOnce() -> K,
+    {
+        self.data.entry(index).or_insert_with(compute)
     }
 }

@@ -38,9 +38,9 @@ fn test_basic_cache_creation_and_single_value() {
         |n: &usize, _deps: Vec<i32>| (*n as i32) * 2,
     );
 
-    assert_eq!(cache.get(5), 10);
-    assert_eq!(cache.get(0), 0);
-    assert_eq!(cache.get(100), 200);
+    assert_eq!(cache.get(&5), 10);
+    assert_eq!(cache.get(&0), 0);
+    assert_eq!(cache.get(&100), 200);
 }
 
 
@@ -65,14 +65,14 @@ fn test_fibonacci_linear_dependency_chain() {
         },
     );
 
-    assert_eq!(cache.get(0), 0);
-    assert_eq!(cache.get(1), 1);
-    assert_eq!(cache.get(2), 1);
-    assert_eq!(cache.get(3), 2);
-    assert_eq!(cache.get(4), 3);
-    assert_eq!(cache.get(5), 5);
-    assert_eq!(cache.get(10), 55);
-    assert_eq!(cache.get(20), 6765);
+    assert_eq!(cache.get(&0), 0);
+    assert_eq!(cache.get(&1), 1);
+    assert_eq!(cache.get(&2), 1);
+    assert_eq!(cache.get(&3), 2);
+    assert_eq!(cache.get(&4), 3);
+    assert_eq!(cache.get(&5), 5);
+    assert_eq!(cache.get(&10), 55);
+    assert_eq!(cache.get(&20), 6765);
 }
 
 
@@ -103,55 +103,65 @@ fn test_diamond_dependency_memoization() {
         },
     );
 
-    let result = cache.get(0);
+    let result = cache.get(&0);
     // D=10, B=20, C=30, A=50
     assert_eq!(result, 50);
     // Should have computed exactly 4 values (A, B, C, D)
     assert_eq!(compute_count.get(), 4);
 
     // Getting A again should not recompute
-    let _ = cache.get(0);
+    let _ = cache.get(&0);
     assert_eq!(compute_count.get(), 4);
 }
 
 
 #[test]
-fn test_vec_backend_ensure_index_idempotence() {
+fn test_vec_backend_get_or_insert() {
     let mut backend: VecBackend<i32> = VecBackend::new();
 
-    // Ensure index and initialize
-    backend.ensure_index(5);
-    let cell = backend.get(&5);
-    cell.get_or_init(|| 42);
+    // Insert value at index 5
+    let value = backend.get_or_insert(5, || 42);
+    assert_eq!(*value, 42);
 
-    // Ensure same index again - should preserve value
-    backend.ensure_index(5);
-    assert_eq!(backend.get(&5).get(), Some(&42));
+    // Get same index again - should return cached value, not recompute
+    let value = backend.get_or_insert(5, || 999);
+    assert_eq!(*value, 42);
 
-    // Ensure a larger index - should not affect existing
-    backend.ensure_index(10);
-    assert_eq!(backend.get(&5).get(), Some(&42));
-    assert_eq!(backend.get(&10).get(), None);
+    // Get returns the cached value
+    assert_eq!(backend.get(&5), Some(&42));
+
+    // Get returns None for uncached index
+    assert_eq!(backend.get(&10), None);
+
+    // Insert at larger index - should not affect existing
+    let value = backend.get_or_insert(10, || 100);
+    assert_eq!(*value, 100);
+    assert_eq!(backend.get(&5), Some(&42));
 }
 
 
 #[test]
-fn test_hashmap_backend_ensure_index_idempotence() {
+fn test_hashmap_backend_get_or_insert() {
     let mut backend: HashMapBackend<String, i32> = HashMapBackend::new();
 
-    // Ensure index and initialize
-    backend.ensure_index("key1".to_string());
-    let cell = backend.get(&"key1".to_string());
-    cell.get_or_init(|| 42);
+    // Insert value
+    let value = backend.get_or_insert("key1".to_string(), || 42);
+    assert_eq!(*value, 42);
 
-    // Ensure same index again - should preserve value
-    backend.ensure_index("key1".to_string());
-    assert_eq!(backend.get(&"key1".to_string()).get(), Some(&42));
+    // Get same key again - should return cached value, not recompute
+    let value = backend.get_or_insert("key1".to_string(), || 999);
+    assert_eq!(*value, 42);
 
-    // Ensure a different key - should not affect existing
-    backend.ensure_index("key2".to_string());
-    assert_eq!(backend.get(&"key1".to_string()).get(), Some(&42));
-    assert_eq!(backend.get(&"key2".to_string()).get(), None);
+    // Get returns the cached value
+    assert_eq!(backend.get(&"key1".to_string()), Some(&42));
+
+    // Get returns None for uncached key
+    assert_eq!(backend.get(&"key2".to_string()), None);
+
+    // Insert different key - should not affect existing
+    let value = backend.get_or_insert("key2".to_string(), || 100);
+    assert_eq!(*value, 100);
+    assert_eq!(backend.get(&"key1".to_string()), Some(&42));
 }
 
 #[test]
@@ -175,46 +185,46 @@ fn test_hashmap_backend_with_cache() {
         },
     );
 
-    assert_eq!(cache.get("".to_string()), 0);
-    assert_eq!(cache.get("a".to_string()), 1);
-    assert_eq!(cache.get("ab".to_string()), 2);
-    assert_eq!(cache.get("abc".to_string()), 3);
+    assert_eq!(cache.get(&"".to_string()), 0);
+    assert_eq!(cache.get(&"a".to_string()), 1);
+    assert_eq!(cache.get(&"ab".to_string()), 2);
+    assert_eq!(cache.get(&"abc".to_string()), 3);
 }
 
 #[test]
 fn test_collatz_base_case() {
     // n=1 should have chain length 0
     let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
-    assert_eq!(cache.get(1u64), 0);
+    assert_eq!(cache.get(&1u64), 0);
 }
 
 #[test]
 fn test_collatz_even_numbers() {
     let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
     // 2 -> 1 (length 1)
-    assert_eq!(cache.get(2u64), 1);
+    assert_eq!(cache.get(&2u64), 1);
     // 4 -> 2 -> 1 (length 2)
-    assert_eq!(cache.get(4u64), 2);
+    assert_eq!(cache.get(&4u64), 2);
     // 8 -> 4 -> 2 -> 1 (length 3)
-    assert_eq!(cache.get(8u64), 3);
+    assert_eq!(cache.get(&8u64), 3);
 }
 
 #[test]
 fn test_collatz_odd_numbers() {
     let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
     // 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 7)
-    assert_eq!(cache.get(3u64), 7);
+    assert_eq!(cache.get(&3u64), 7);
     // 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 5)
-    assert_eq!(cache.get(5u64), 5);
+    assert_eq!(cache.get(&5u64), 5);
 }
 
 #[test]
 fn test_collatz_known_values() {
     let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
     // Known Collatz chain lengths
-    assert_eq!(cache.get(6u64), 8);   // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
-    assert_eq!(cache.get(7u64), 16);  // 7 has a longer chain
-    assert_eq!(cache.get(27u64), 111); // 27 is famous for its long chain
+    assert_eq!(cache.get(&6u64), 8);   // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
+    assert_eq!(cache.get(&7u64), 16);  // 7 has a longer chain
+    assert_eq!(cache.get(&27u64), 111); // 27 is famous for its long chain
 }
 
 #[test]
@@ -225,8 +235,8 @@ fn test_parallel_collatz_matches_sequential() {
 
     for n in 1..=100u64 {
         assert_eq!(
-            seq_cache.get(n),
-            par_cache.get(n),
+            seq_cache.get(&n),
+            par_cache.get(&n),
             "Mismatch at n={}",
             n
         );
@@ -238,10 +248,10 @@ fn test_dashmap_collatz() {
     // Test DashMapDpCache
     let par_cache = DashMapDpCache::new(collatz_deps, collatz_compute);
 
-    assert_eq!(par_cache.get(1u64), 0);
-    assert_eq!(par_cache.get(2u64), 1);
-    assert_eq!(par_cache.get(3u64), 7);
-    assert_eq!(par_cache.get(27u64), 111);
+    assert_eq!(par_cache.get(&1u64), 0);
+    assert_eq!(par_cache.get(&2u64), 1);
+    assert_eq!(par_cache.get(&3u64), 7);
+    assert_eq!(par_cache.get(&27u64), 111);
 }
 
 
@@ -274,11 +284,11 @@ impl DpProblem<usize, u64> for Fibonacci {
 fn test_trait_based_fibonacci() {
     let cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
 
-    assert_eq!(cache.get(0), 0);
-    assert_eq!(cache.get(1), 1);
-    assert_eq!(cache.get(2), 1);
-    assert_eq!(cache.get(10), 55);
-    assert_eq!(cache.get(20), 6765);
+    assert_eq!(cache.get(&0), 0);
+    assert_eq!(cache.get(&1), 1);
+    assert_eq!(cache.get(&2), 1);
+    assert_eq!(cache.get(&10), 55);
+    assert_eq!(cache.get(&20), 6765);
 }
 
 /// Collatz problem using the trait-based API
@@ -308,20 +318,20 @@ impl DpProblem<u64, u64> for Collatz {
 fn test_trait_based_collatz_sequential() {
     let cache = DpCache::with_problem(HashMapBackend::new(), Collatz);
 
-    assert_eq!(cache.get(1), 0);
-    assert_eq!(cache.get(2), 1);
-    assert_eq!(cache.get(3), 7);
-    assert_eq!(cache.get(27), 111);
+    assert_eq!(cache.get(&1), 0);
+    assert_eq!(cache.get(&2), 1);
+    assert_eq!(cache.get(&3), 7);
+    assert_eq!(cache.get(&27), 111);
 }
 
 #[test]
 fn test_trait_based_collatz_parallel() {
     let cache = DashMapDpCache::with_problem(Collatz);
 
-    assert_eq!(cache.get(1), 0);
-    assert_eq!(cache.get(2), 1);
-    assert_eq!(cache.get(3), 7);
-    assert_eq!(cache.get(27), 111);
+    assert_eq!(cache.get(&1), 0);
+    assert_eq!(cache.get(&2), 1);
+    assert_eq!(cache.get(&3), 7);
+    assert_eq!(cache.get(&27), 111);
 }
 
 /// Factorial problem using the trait-based API
@@ -349,10 +359,10 @@ impl DpProblem<usize, u64> for Factorial {
 fn test_trait_based_factorial() {
     let cache = DpCache::with_problem(VecBackend::new(), Factorial);
 
-    assert_eq!(cache.get(0), 1);
-    assert_eq!(cache.get(1), 1);
-    assert_eq!(cache.get(5), 120);
-    assert_eq!(cache.get(10), 3628800);
+    assert_eq!(cache.get(&0), 1);
+    assert_eq!(cache.get(&1), 1);
+    assert_eq!(cache.get(&5), 120);
+    assert_eq!(cache.get(&10), 3628800);
 }
 
 #[test]
@@ -378,6 +388,6 @@ fn test_trait_based_matches_closure_based() {
     );
 
     for n in 0..=20 {
-        assert_eq!(trait_cache.get(n), closure_cache.get(n), "Mismatch at n={}", n);
+        assert_eq!(trait_cache.get(&n), closure_cache.get(&n), "Mismatch at n={}", n);
     }
 }

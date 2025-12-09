@@ -47,7 +47,7 @@ use super::problem::ParallelDpProblem;
 /// }
 ///
 /// let cache = DashMapDpCache::with_problem(Collatz);
-/// assert_eq!(cache.get(27), 111);
+/// assert_eq!(cache.get(&27), 111);
 /// ```
 ///
 /// # Example (closure-based)
@@ -67,7 +67,7 @@ use super::problem::ParallelDpProblem;
 ///     },
 /// );
 ///
-/// assert_eq!(cache.get(27), 111);
+/// assert_eq!(cache.get(&27), 111);
 /// ```
 pub struct DashMapDpCache<I, K, P>
 where
@@ -117,19 +117,19 @@ where
     /// on the DashMap shard while the closure executes. If the closure calls
     /// `self.get()` recursively and hits the same shard, it would deadlock.
     /// Instead, we compute the value first (releasing any locks), then insert.
-    pub fn get(&self, index: I) -> K {
+    pub fn get(&self, index: &I) -> K {
         // Fast path: check if already computed
-        if let Some(entry) = self.data.get(&index) {
+        if let Some(entry) = self.data.get(index) {
             return entry.value().clone();
         }
 
         // Get dependencies (no locks held)
-        let deps = self.problem.deps(&index);
+        let deps = self.problem.deps(index);
 
         // Resolve dependencies IN PARALLEL using Rayon (no locks held)
         let resolve_deps = || {
             deps.into_par_iter()
-                .map(|dep| self.get(dep))
+                .map(|dep| self.get(&dep))
                 .collect::<Vec<K>>()
         };
 
@@ -142,7 +142,7 @@ where
         // dep_values is already resolved outside, so no recursive calls happen while holding the lock
         self.data
             .entry(index.clone())
-            .or_insert_with(|| self.problem.compute(&index, dep_values))
+            .or_insert_with(|| self.problem.compute(index, dep_values))
             .value()
             .clone()
     }

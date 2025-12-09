@@ -92,7 +92,7 @@ fn main() {
             pattern_deps,
             make_pattern_compute(i),
         );
-        let result = cache.get(j);
+        let result = cache.get(&j);
         vec_results.push(result);
     }
     let vec_time = start.elapsed();
@@ -104,7 +104,7 @@ fn main() {
     let mut hashmap_results: Vec<Option<u64>> = Vec::with_capacity(test_cases.len());
     for &(i, j) in &test_cases {
         let cache = DpCache::new(HashMapBackend::new(), pattern_deps, make_pattern_compute(i));
-        let result = cache.get(j);
+        let result = cache.get(&j);
         hashmap_results.push(result);
     }
     let hashmap_time = start.elapsed();
@@ -116,7 +116,7 @@ fn main() {
     let mut dashmap_results: Vec<Option<u64>> = Vec::with_capacity(test_cases.len());
     for &(i, j) in &test_cases {
         let cache = DashMapDpCache::new(pattern_deps, make_pattern_compute(i));
-        let result = cache.get(j);
+        let result = cache.get(&j);
         dashmap_results.push(result);
     }
     let dashmap_time = start.elapsed();
@@ -129,7 +129,7 @@ fn main() {
         .par_iter()
         .map(|&(i, j)| {
             let cache = DashMapDpCache::new(pattern_deps, make_pattern_compute(i));
-            cache.get(j)
+            cache.get(&j)
         })
         .collect();
     let dashmap_par_time = start.elapsed();
