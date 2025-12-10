@@ -164,8 +164,9 @@ mod parallel;
 mod problem;
 
 pub use backend::{
-    Array2DBackend, ArrayBackend, Backend, DashMapBackend, HashMapBackend, ParallelArray2DBackend,
-    ParallelArrayBackend, ParallelBackend, RwLockHashMapBackend, Vec2DBackend, VecBackend,
+    Array2DBackend, ArrayBackend, Backend, DashMapBackend, HashMapBackend, NoCacheBackend,
+    ParallelArray2DBackend, ParallelArrayBackend, ParallelBackend, ParallelNoCacheBackend,
+    RwLockHashMapBackend, Vec2DBackend, VecBackend,
 };
 pub use cache::DpCache;
 pub use parallel::ParallelDpCache;

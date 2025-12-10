@@ -350,6 +350,57 @@ impl<K> Backend<(usize, usize), K> for Vec2DBackend<K> {
     }
 }
 
+/// A no-op backend that never caches values.
+///
+/// This backend always recomputes values on every `get_or_insert` call and
+/// always returns `None` for `get`. Useful for benchmarking to isolate
+/// the overhead of the DpCache wrapper from actual caching mechanisms.
+///
+/// # Example
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{NoCacheBackend, Backend};
+///
+/// let mut backend: NoCacheBackend<usize, i32> = NoCacheBackend::new();
+/// // Always recomputes - no caching
+/// let value = backend.get_or_insert(5, || 42).unwrap();
+/// assert_eq!(*value, 42);
+/// // get always returns None
+/// assert!(backend.get(&5).is_none());
+/// ```
+#[derive(Debug, Default)]
+pub struct NoCacheBackend<I, K> {
+    /// Temporary storage for the last computed value (to return a reference)
+    last_value: Option<K>,
+    _phantom: std::marker::PhantomData<(I, K)>,
+}
+
+impl<I, K> NoCacheBackend<I, K> {
+    /// Creates a new NoCacheBackend.
+    pub fn new() -> Self {
+        Self {
+            last_value: None,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<I, K> Backend<I, K> for NoCacheBackend<I, K> {
+    fn get(&self, _index: &I) -> Option<&K> {
+        // Never cached - always return None
+        None
+    }
+
+    fn get_or_insert<F>(&mut self, _index: I, compute: F) -> Result<&K, I>
+    where
+        F: FnOnce() -> K,
+    {
+        // Always recompute - never cache
+        self.last_value = Some(compute());
+        Ok(self.last_value.as_ref().unwrap())
+    }
+}
+
 /// A HashMap-based backend for arbitrary hashable indices.
 ///
 /// This backend supports any index type that implements `Hash + Eq`.
@@ -442,6 +493,57 @@ where
             .or_insert_with(compute)
             .value()
             .clone())
+    }
+}
+
+/// A thread-safe no-op backend that never caches values.
+///
+/// This backend always recomputes values on every `get_or_insert` call and
+/// always returns `None` for `get`. Useful for benchmarking to isolate
+/// the overhead of the ParallelDpCache wrapper from actual caching mechanisms.
+///
+/// # Example
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{ParallelNoCacheBackend, ParallelBackend};
+///
+/// let backend: ParallelNoCacheBackend<usize, i32> = ParallelNoCacheBackend::new();
+/// // Always recomputes - no caching
+/// let value = backend.get_or_insert(5, || 42).unwrap();
+/// assert_eq!(value, 42);
+/// // get always returns None
+/// assert!(backend.get(&5).is_none());
+/// ```
+#[derive(Debug, Default)]
+pub struct ParallelNoCacheBackend<I, K> {
+    _phantom: std::marker::PhantomData<(I, K)>,
+}
+
+impl<I, K> ParallelNoCacheBackend<I, K> {
+    /// Creates a new ParallelNoCacheBackend.
+    pub fn new() -> Self {
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<I, K> ParallelBackend<I, K> for ParallelNoCacheBackend<I, K>
+where
+    I: Hash + Eq + Clone + Send + Sync,
+    K: Clone + Send + Sync,
+{
+    fn get(&self, _index: &I) -> Option<K> {
+        // Never cached - always return None
+        None
+    }
+
+    fn get_or_insert<F>(&self, _index: I, compute: F) -> Result<K, I>
+    where
+        F: FnOnce() -> K,
+    {
+        // Always recompute - never cache
+        Ok(compute())
     }
 }
 
