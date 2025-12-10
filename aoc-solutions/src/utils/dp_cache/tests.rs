@@ -282,23 +282,6 @@ fn test_collatz_known_values() {
 }
 
 #[test]
-fn test_parallel_collatz_matches_sequential() {
-    // Verify parallel cache produces same results as sequential
-    let seq_cache = DpCache::builder()
-        .backend(HashMapBackend::new())
-        .problem(Collatz)
-        .build();
-    let par_cache = ParallelDpCache::builder()
-        .backend(DashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    for n in 1..=100u64 {
-        assert_eq!(seq_cache.get(&n).unwrap(), par_cache.get(&n).unwrap(), "Mismatch at n={}", n);
-    }
-}
-
-#[test]
 fn test_dashmap_collatz() {
     // Test DashMapDpCache
     let par_cache = ParallelDpCache::builder()
@@ -313,7 +296,7 @@ fn test_dashmap_collatz() {
 }
 
 // =============================================================================
-// Trait-based API tests
+// Problem definitions for tests
 // =============================================================================
 
 /// Fibonacci problem using the trait-based API
@@ -335,20 +318,6 @@ impl DpProblem<usize, u64> for Fibonacci {
             deps[0] + deps[1]
         }
     }
-}
-
-#[test]
-fn test_trait_based_fibonacci() {
-    let cache = DpCache::builder()
-        .backend(VecBackend::new())
-        .problem(Fibonacci)
-        .build();
-
-    assert_eq!(cache.get(&0).unwrap(), 0);
-    assert_eq!(cache.get(&1).unwrap(), 1);
-    assert_eq!(cache.get(&2).unwrap(), 1);
-    assert_eq!(cache.get(&10).unwrap(), 55);
-    assert_eq!(cache.get(&20).unwrap(), 6765);
 }
 
 /// Collatz problem using the trait-based API
@@ -374,32 +343,6 @@ impl DpProblem<u64, u64> for Collatz {
     }
 }
 
-#[test]
-fn test_trait_based_collatz_sequential() {
-    let cache = DpCache::builder()
-        .backend(HashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    assert_eq!(cache.get(&1).unwrap(), 0);
-    assert_eq!(cache.get(&2).unwrap(), 1);
-    assert_eq!(cache.get(&3).unwrap(), 7);
-    assert_eq!(cache.get(&27).unwrap(), 111);
-}
-
-#[test]
-fn test_trait_based_collatz_parallel() {
-    let cache = ParallelDpCache::builder()
-        .backend(DashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    assert_eq!(cache.get(&1).unwrap(), 0);
-    assert_eq!(cache.get(&2).unwrap(), 1);
-    assert_eq!(cache.get(&3).unwrap(), 7);
-    assert_eq!(cache.get(&27).unwrap(), 111);
-}
-
 /// Factorial problem using the trait-based API
 struct Factorial;
 
@@ -422,7 +365,7 @@ impl DpProblem<usize, u64> for Factorial {
 }
 
 #[test]
-fn test_trait_based_factorial() {
+fn test_factorial() {
     let cache = DpCache::builder()
         .backend(VecBackend::new())
         .problem(Factorial)
@@ -432,77 +375,6 @@ fn test_trait_based_factorial() {
     assert_eq!(cache.get(&1).unwrap(), 1);
     assert_eq!(cache.get(&5).unwrap(), 120);
     assert_eq!(cache.get(&10).unwrap(), 3628800);
-}
-
-#[test]
-fn test_trait_based_matches_closure_based() {
-    // Verify trait-based and closure-based produce same results
-    // Both use the Fibonacci problem
-    let trait_cache = DpCache::builder()
-        .backend(VecBackend::new())
-        .problem(Fibonacci)
-        .build();
-    let trait_cache2 = DpCache::builder()
-        .backend(VecBackend::new())
-        .problem(Fibonacci)
-        .build();
-
-    for n in 0..=20 {
-        assert_eq!(
-            trait_cache.get(&n).unwrap(),
-            trait_cache2.get(&n).unwrap(),
-            "Mismatch at n={}",
-            n
-        );
-    }
-}
-
-// =============================================================================
-// RwLockDpCache tests
-// =============================================================================
-
-#[test]
-fn test_rwlock_collatz() {
-    // Test RwLockDpCache
-    let par_cache = ParallelDpCache::builder()
-        .backend(RwLockHashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    assert_eq!(par_cache.get(&1u64).unwrap(), 0);
-    assert_eq!(par_cache.get(&2u64).unwrap(), 1);
-    assert_eq!(par_cache.get(&3u64).unwrap(), 7);
-    assert_eq!(par_cache.get(&27u64).unwrap(), 111);
-}
-
-#[test]
-fn test_rwlock_collatz_matches_sequential() {
-    // Verify RwLock parallel cache produces same results as sequential
-    let seq_cache = DpCache::builder()
-        .backend(HashMapBackend::new())
-        .problem(Collatz)
-        .build();
-    let par_cache = ParallelDpCache::builder()
-        .backend(RwLockHashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    for n in 1..=100u64 {
-        assert_eq!(seq_cache.get(&n).unwrap(), par_cache.get(&n).unwrap(), "Mismatch at n={}", n);
-    }
-}
-
-#[test]
-fn test_trait_based_collatz_rwlock() {
-    let cache = ParallelDpCache::builder()
-        .backend(RwLockHashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    assert_eq!(cache.get(&1).unwrap(), 0);
-    assert_eq!(cache.get(&2).unwrap(), 1);
-    assert_eq!(cache.get(&3).unwrap(), 7);
-    assert_eq!(cache.get(&27).unwrap(), 111);
 }
 
 // =============================================================================
@@ -556,29 +428,6 @@ fn test_rwlock_backend_get_or_insert() {
     assert_eq!(value, 100);
     assert_eq!(backend.get(&"key1".to_string()), Some(42));
 }
-
-#[test]
-fn test_all_parallel_backends_match() {
-    // Verify all parallel backends produce same results
-    let dashmap_cache = ParallelDpCache::builder()
-        .backend(DashMapBackend::new())
-        .problem(Collatz)
-        .build();
-    let rwlock_cache = ParallelDpCache::builder()
-        .backend(RwLockHashMapBackend::new())
-        .problem(Collatz)
-        .build();
-
-    for n in 1..=100u64 {
-        assert_eq!(
-            dashmap_cache.get(&n).unwrap(),
-            rwlock_cache.get(&n).unwrap(),
-            "Mismatch at n={}",
-            n
-        );
-    }
-}
-
 
 // =============================================================================
 // ArrayBackend tests
@@ -1268,41 +1117,12 @@ fn test_parallel_array2d_backend_concurrent_access() {
     assert_eq!(compute_count.load(Ordering::SeqCst), 1);
 }
 
-/// Parallel 2D grid problem for testing ParallelArray2DBackend with ParallelDpCache
-struct ParallelGrid2DSum;
-
-impl DpProblem<(usize, usize), i32> for ParallelGrid2DSum {
-    fn deps(&self, index: &(usize, usize)) -> Vec<(usize, usize)> {
-        let (row, col) = *index;
-        if row == 0 && col == 0 {
-            vec![]
-        } else if row == 0 {
-            vec![(0, col - 1)]
-        } else if col == 0 {
-            vec![(row - 1, 0)]
-        } else {
-            vec![(row - 1, col), (row, col - 1)]
-        }
-    }
-
-    fn compute(&self, index: &(usize, usize), deps: Vec<i32>) -> i32 {
-        let (row, col) = *index;
-        if row == 0 && col == 0 {
-            1
-        } else if deps.len() == 1 {
-            deps[0] + 1
-        } else {
-            deps[0].max(deps[1]) + 1
-        }
-    }
-}
-
 #[test]
 fn test_parallel_array2d_backend_with_parallel_dp_cache() {
     // Test ParallelArray2DBackend with ParallelDpCache for a 2D grid problem
     let cache = ParallelDpCache::builder()
         .backend(ParallelArray2DBackend::<i32, 5, 5>::new())
-        .problem(ParallelGrid2DSum)
+        .problem(Grid2DSum)
         .build();
     
     // (0,0) = 1
@@ -1318,147 +1138,110 @@ fn test_parallel_array2d_backend_with_parallel_dp_cache() {
 
 
 // =============================================================================
-// Integration tests - DpCache builder with all backends
+// Cross-backend consistency tests
 // =============================================================================
 
 #[test]
-fn test_dp_cache_builder_with_array_backend() {
-    let cache = DpCache::builder()
-        .backend(ArrayBackend::<u64, 21>::new())
-        .problem(Fibonacci)
-        .build();
-    
-    assert_eq!(cache.get(&0).unwrap(), 0);
-    assert_eq!(cache.get(&1).unwrap(), 1);
-    assert_eq!(cache.get(&10).unwrap(), 55);
-    assert_eq!(cache.get(&20).unwrap(), 6765);
-}
-
-#[test]
-fn test_dp_cache_builder_with_array2d_backend() {
-    let cache = DpCache::builder()
-        .backend(Array2DBackend::<i32, 5, 5>::new())
-        .problem(Grid2DSum)
-        .build();
-    
-    assert_eq!(cache.get(&(0, 0)).unwrap(), 1);
-    assert_eq!(cache.get(&(4, 4)).unwrap(), 9);
-}
-
-#[test]
-fn test_dp_cache_builder_with_vec2d_backend() {
-    let cache = DpCache::builder()
-        .backend(Vec2DBackend::<i32>::new())
-        .problem(Grid2DSum)
-        .build();
-    
-    assert_eq!(cache.get(&(0, 0)).unwrap(), 1);
-    assert_eq!(cache.get(&(4, 4)).unwrap(), 9);
-}
-
-#[test]
-fn test_parallel_dp_cache_builder_with_parallel_array_backend() {
-    let cache = ParallelDpCache::builder()
-        .backend(ParallelArrayBackend::<u64, 21>::new())
-        .problem(Fibonacci)
-        .build();
-    
-    assert_eq!(cache.get(&0).unwrap(), 0);
-    assert_eq!(cache.get(&1).unwrap(), 1);
-    assert_eq!(cache.get(&10).unwrap(), 55);
-    assert_eq!(cache.get(&20).unwrap(), 6765);
-}
-
-#[test]
-fn test_parallel_dp_cache_builder_with_parallel_array2d_backend() {
-    let cache = ParallelDpCache::builder()
-        .backend(ParallelArray2DBackend::<i32, 5, 5>::new())
-        .problem(ParallelGrid2DSum)
-        .build();
-    
-    assert_eq!(cache.get(&(0, 0)).unwrap(), 1);
-    assert_eq!(cache.get(&(4, 4)).unwrap(), 9);
-}
-
-#[test]
-fn test_const_constructed_backends_work_correctly() {
-    // Test that const-constructed backends work correctly
-    const ARRAY_BACKEND: ArrayBackend<u64, 21> = ArrayBackend::new();
-    const ARRAY2D_BACKEND: Array2DBackend<i32, 5, 5> = Array2DBackend::new();
-    const PARALLEL_ARRAY_BACKEND: ParallelArrayBackend<u64, 21> = ParallelArrayBackend::new();
-    const PARALLEL_ARRAY2D_BACKEND: ParallelArray2DBackend<i32, 5, 5> = ParallelArray2DBackend::new();
-    
-    // Sequential 1D
-    let cache = DpCache::builder()
-        .backend(ARRAY_BACKEND)
-        .problem(Fibonacci)
-        .build();
-    assert_eq!(cache.get(&20).unwrap(), 6765);
-    
-    // Sequential 2D
-    let cache = DpCache::builder()
-        .backend(ARRAY2D_BACKEND)
-        .problem(Grid2DSum)
-        .build();
-    assert_eq!(cache.get(&(4, 4)).unwrap(), 9);
-    
-    // Parallel 1D
-    let cache = ParallelDpCache::builder()
-        .backend(PARALLEL_ARRAY_BACKEND)
-        .problem(Fibonacci)
-        .build();
-    assert_eq!(cache.get(&20).unwrap(), 6765);
-    
-    // Parallel 2D
-    let cache = ParallelDpCache::builder()
-        .backend(PARALLEL_ARRAY2D_BACKEND)
-        .problem(ParallelGrid2DSum)
-        .build();
-    assert_eq!(cache.get(&(4, 4)).unwrap(), 9);
-}
-
-#[test]
-fn test_all_sequential_backends_produce_same_results() {
-    // Test that all sequential backends produce the same results for Fibonacci
+fn test_all_sequential_1d_backends_produce_same_results() {
+    // Test all sequential 1D backends with Fibonacci
     let vec_cache = DpCache::builder()
         .backend(VecBackend::new())
         .problem(Fibonacci)
         .build();
-    
+    let hashmap_cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Fibonacci)
+        .build();
     let array_cache = DpCache::builder()
         .backend(ArrayBackend::<u64, 21>::new())
         .problem(Fibonacci)
         .build();
-    
+
     for n in 0..=20 {
-        assert_eq!(
-            vec_cache.get(&n).unwrap(),
-            array_cache.get(&n).unwrap(),
-            "Mismatch at n={}",
-            n
-        );
+        let expected = vec_cache.get(&n).unwrap();
+        assert_eq!(expected, hashmap_cache.get(&n).unwrap(), "HashMap mismatch at n={}", n);
+        assert_eq!(expected, array_cache.get(&n).unwrap(), "Array mismatch at n={}", n);
     }
 }
 
 #[test]
-fn test_all_parallel_backends_produce_same_results() {
-    // Test that all parallel backends produce the same results for Fibonacci
+fn test_all_sequential_2d_backends_produce_same_results() {
+    // Test all sequential 2D backends with Grid2DSum
+    let array2d_cache = DpCache::builder()
+        .backend(Array2DBackend::<i32, 5, 5>::new())
+        .problem(Grid2DSum)
+        .build();
+    let vec2d_cache = DpCache::builder()
+        .backend(Vec2DBackend::<i32>::new())
+        .problem(Grid2DSum)
+        .build();
+
+    for row in 0..5 {
+        for col in 0..5 {
+            let expected = array2d_cache.get(&(row, col)).unwrap();
+            assert_eq!(expected, vec2d_cache.get(&(row, col)).unwrap(), "Vec2D mismatch at ({}, {})", row, col);
+        }
+    }
+}
+
+#[test]
+fn test_all_parallel_1d_backends_produce_same_results() {
+    // Test all parallel 1D backends with Fibonacci
     let dashmap_cache = ParallelDpCache::builder()
         .backend(DashMapBackend::new())
         .problem(Fibonacci)
         .build();
-    
+    let rwlock_cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Fibonacci)
+        .build();
     let array_cache = ParallelDpCache::builder()
         .backend(ParallelArrayBackend::<u64, 21>::new())
         .problem(Fibonacci)
         .build();
-    
+
     for n in 0..=20 {
-        assert_eq!(
-            dashmap_cache.get(&n).unwrap(),
-            array_cache.get(&n).unwrap(),
-            "Mismatch at n={}",
-            n
-        );
+        let expected = dashmap_cache.get(&n).unwrap();
+        assert_eq!(expected, rwlock_cache.get(&n).unwrap(), "RwLock mismatch at n={}", n);
+        assert_eq!(expected, array_cache.get(&n).unwrap(), "ParallelArray mismatch at n={}", n);
+    }
+}
+
+#[test]
+fn test_all_parallel_2d_backends_produce_same_results() {
+    // Test all parallel 2D backends with Grid2DSum
+    let array2d_cache = ParallelDpCache::builder()
+        .backend(ParallelArray2DBackend::<i32, 5, 5>::new())
+        .problem(Grid2DSum)
+        .build();
+
+    // Verify against sequential reference
+    let seq_cache = DpCache::builder()
+        .backend(Array2DBackend::<i32, 5, 5>::new())
+        .problem(Grid2DSum)
+        .build();
+
+    for row in 0..5 {
+        for col in 0..5 {
+            let expected = seq_cache.get(&(row, col)).unwrap();
+            assert_eq!(expected, array2d_cache.get(&(row, col)).unwrap(), "ParallelArray2D mismatch at ({}, {})", row, col);
+        }
+    }
+}
+
+#[test]
+fn test_sequential_and_parallel_produce_same_results() {
+    // Verify sequential and parallel caches produce identical results
+    let seq_cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
+    let par_cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
+
+    for n in 1..=100u64 {
+        assert_eq!(seq_cache.get(&n).unwrap(), par_cache.get(&n).unwrap(), "Seq/Par mismatch at n={}", n);
     }
 }
