@@ -60,7 +60,7 @@ use aoc_solver::{SolverRegistryBuilder, Solver, SolverInstance};
 
 fn main() {
     let registry = SolverRegistryBuilder::new()
-        .register(2023, 1, |input: &str| {
+        .register(2023, 1, 2, |input: &str| {
             let shared = Day1::parse(input)?;
             Ok(Box::new(SolverInstance::<Day1>::new(2023, 1, shared)))
         })

@@ -145,7 +145,7 @@ where
 /// # Example (const)
 ///
 /// ```rust
-/// use aoc_solutions::utils::dp_cache::{ParallelDpCache, ParallelDpCacheBuilder, ParallelArrayBackend, DpProblem};
+/// use aoc_solutions::utils::dp_cache::{ParallelDpCache, ParallelArrayBackend, DpProblem};
 ///
 /// struct Fibonacci;
 /// impl DpProblem<usize, u64> for Fibonacci {
@@ -158,10 +158,7 @@ where
 /// }
 ///
 /// const CACHE: ParallelDpCache<usize, u64, ParallelArrayBackend<u64, 21>, Fibonacci> =
-///     ParallelDpCacheBuilder::new()
-///         .with_backend(ParallelArrayBackend::new())
-///         .with_problem(Fibonacci)
-///         .build();
+///     ParallelDpCache::new_const(ParallelArrayBackend::new(), Fibonacci);
 /// ```
 pub struct ParallelDpCacheBuilder<I, K, B, P> {
     backend: Option<B>,

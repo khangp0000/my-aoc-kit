@@ -156,7 +156,7 @@ where
 /// # Example (const)
 ///
 /// ```rust
-/// use aoc_solutions::utils::dp_cache::{DpCache, DpCacheBuilder, DpProblem, ArrayBackend};
+/// use aoc_solutions::utils::dp_cache::{DpCache, DpProblem, ArrayBackend};
 ///
 /// struct Factorial;
 /// impl DpProblem<usize, u64> for Factorial {
@@ -169,10 +169,7 @@ where
 /// }
 ///
 /// const CACHE: DpCache<usize, u64, ArrayBackend<u64, 21>, Factorial> =
-///     DpCacheBuilder::new()
-///         .with_backend(ArrayBackend::new())
-///         .with_problem(Factorial)
-///         .build();
+///     DpCache::new_const(ArrayBackend::new(), Factorial);
 /// ```
 pub struct DpCacheBuilder<I, K, B, P> {
     backend: Option<B>,
