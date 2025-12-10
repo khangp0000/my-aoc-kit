@@ -129,6 +129,51 @@ where
 // =============================================================================
 
 /// Builder for constructing a `DpCache`.
+///
+/// Supports const construction when backend and problem are set via const methods.
+///
+/// # Example (runtime)
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{DpCache, DpProblem, VecBackend};
+///
+/// struct Fibonacci;
+/// impl DpProblem<usize, u64> for Fibonacci {
+///     fn deps(&self, n: &usize) -> Vec<usize> {
+///         if *n <= 1 { vec![] } else { vec![n - 1, n - 2] }
+///     }
+///     fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+///         if *n <= 1 { *n as u64 } else { deps[0] + deps[1] }
+///     }
+/// }
+///
+/// let cache = DpCache::builder()
+///     .backend(VecBackend::new())
+///     .problem(Fibonacci)
+///     .build();
+/// ```
+///
+/// # Example (const)
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{DpCache, DpCacheBuilder, DpProblem, ArrayBackend};
+///
+/// struct Factorial;
+/// impl DpProblem<usize, u64> for Factorial {
+///     fn deps(&self, n: &usize) -> Vec<usize> {
+///         if *n == 0 { vec![] } else { vec![n - 1] }
+///     }
+///     fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+///         if *n == 0 { 1 } else { (*n as u64) * deps[0] }
+///     }
+/// }
+///
+/// const CACHE: DpCache<usize, u64, ArrayBackend<u64, 21>, Factorial> =
+///     DpCacheBuilder::new()
+///         .with_backend(ArrayBackend::new())
+///         .with_problem(Factorial)
+///         .build();
+/// ```
 pub struct DpCacheBuilder<I, K, B, P> {
     backend: Option<B>,
     problem: Option<P>,
@@ -173,6 +218,43 @@ where
         DpCache {
             backend: RefCell::new(self.backend.expect("backend is required")),
             problem: self.problem.expect("problem is required"),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<I, K, B, P> DpCache<I, K, B, P>
+where
+    B: Backend<I, K>,
+    P: DpProblem<I, K>,
+{
+    /// Creates a new `DpCache` directly (const-compatible).
+    ///
+    /// Use this when you need to construct a `DpCache` at compile time.
+    /// Both the backend and problem must support const construction.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use aoc_solutions::utils::dp_cache::{DpCache, DpProblem, ArrayBackend};
+    ///
+    /// struct Factorial;
+    /// impl DpProblem<usize, u64> for Factorial {
+    ///     fn deps(&self, n: &usize) -> Vec<usize> {
+    ///         if *n == 0 { vec![] } else { vec![n - 1] }
+    ///     }
+    ///     fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+    ///         if *n == 0 { 1 } else { (*n as u64) * deps[0] }
+    ///     }
+    /// }
+    ///
+    /// const CACHE: DpCache<usize, u64, ArrayBackend<u64, 21>, Factorial> =
+    ///     DpCache::new_const(ArrayBackend::new(), Factorial);
+    /// ```
+    pub const fn new_const(backend: B, problem: P) -> Self {
+        Self {
+            backend: RefCell::new(backend),
+            problem,
             _phantom: PhantomData,
         }
     }

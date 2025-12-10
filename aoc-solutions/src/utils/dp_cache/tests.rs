@@ -5,7 +5,58 @@ use std::rc::Rc;
 
 use super::*;
 
+// =============================================================================
+// Const construction tests
+// =============================================================================
 
+/// Problem for const construction tests
+struct ConstFibonacci;
+
+impl DpProblem<usize, u64> for ConstFibonacci {
+    fn deps(&self, n: &usize) -> Vec<usize> {
+        if *n <= 1 {
+            vec![]
+        } else {
+            vec![n - 1, n - 2]
+        }
+    }
+
+    fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+        if *n <= 1 {
+            *n as u64
+        } else {
+            deps[0] + deps[1]
+        }
+    }
+}
+
+// Verify const construction compiles for DpCache
+const CONST_DP_CACHE: DpCache<usize, u64, ArrayBackend<u64, 21>, ConstFibonacci> =
+    DpCache::new_const(ArrayBackend::new(), ConstFibonacci);
+
+// Verify const construction compiles for ParallelDpCache
+const CONST_PARALLEL_CACHE: ParallelDpCache<usize, u64, ParallelArrayBackend<u64, 21>, ConstFibonacci> =
+    ParallelDpCache::new_const(ParallelArrayBackend::new(), ConstFibonacci);
+
+#[test]
+fn test_const_dp_cache_works() {
+    assert_eq!(CONST_DP_CACHE.get(&0).unwrap(), 0);
+    assert_eq!(CONST_DP_CACHE.get(&1).unwrap(), 1);
+    assert_eq!(CONST_DP_CACHE.get(&10).unwrap(), 55);
+    assert_eq!(CONST_DP_CACHE.get(&20).unwrap(), 6765);
+}
+
+#[test]
+fn test_const_parallel_cache_works() {
+    assert_eq!(CONST_PARALLEL_CACHE.get(&0).unwrap(), 0);
+    assert_eq!(CONST_PARALLEL_CACHE.get(&1).unwrap(), 1);
+    assert_eq!(CONST_PARALLEL_CACHE.get(&10).unwrap(), 55);
+    assert_eq!(CONST_PARALLEL_CACHE.get(&20).unwrap(), 6765);
+}
+
+// =============================================================================
+// Basic tests
+// =============================================================================
 
 #[test]
 fn test_basic_cache_creation_and_single_value() {

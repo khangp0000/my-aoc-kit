@@ -115,6 +115,54 @@ where
 // =============================================================================
 
 /// Builder for constructing a `ParallelDpCache`.
+///
+/// Supports const construction when backend and problem are set via const methods.
+/// Note: Thread pool cannot be set in const context.
+///
+/// # Example (runtime)
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{ParallelDpCache, DashMapBackend, DpProblem};
+///
+/// struct Collatz;
+/// impl DpProblem<u64, u64> for Collatz {
+///     fn deps(&self, n: &u64) -> Vec<u64> {
+///         if *n <= 1 { vec![] }
+///         else if n % 2 == 0 { vec![n / 2] }
+///         else { vec![3 * n + 1] }
+///     }
+///     fn compute(&self, _n: &u64, deps: Vec<u64>) -> u64 {
+///         if deps.is_empty() { 0 } else { 1 + deps[0] }
+///     }
+/// }
+///
+/// let cache = ParallelDpCache::builder()
+///     .backend(DashMapBackend::new())
+///     .problem(Collatz)
+///     .build();
+/// ```
+///
+/// # Example (const)
+///
+/// ```rust
+/// use aoc_solutions::utils::dp_cache::{ParallelDpCache, ParallelDpCacheBuilder, ParallelArrayBackend, DpProblem};
+///
+/// struct Fibonacci;
+/// impl DpProblem<usize, u64> for Fibonacci {
+///     fn deps(&self, n: &usize) -> Vec<usize> {
+///         if *n <= 1 { vec![] } else { vec![n - 1, n - 2] }
+///     }
+///     fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+///         if *n <= 1 { *n as u64 } else { deps[0] + deps[1] }
+///     }
+/// }
+///
+/// const CACHE: ParallelDpCache<usize, u64, ParallelArrayBackend<u64, 21>, Fibonacci> =
+///     ParallelDpCacheBuilder::new()
+///         .with_backend(ParallelArrayBackend::new())
+///         .with_problem(Fibonacci)
+///         .build();
+/// ```
 pub struct ParallelDpCacheBuilder<I, K, B, P> {
     backend: Option<B>,
     problem: Option<P>,
@@ -168,6 +216,47 @@ where
             backend: self.backend.expect("backend is required"),
             problem: self.problem.expect("problem is required"),
             pool: self.pool,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<I, K, B, P> ParallelDpCache<I, K, B, P>
+where
+    I: Hash + Eq + Clone + Send + Sync,
+    K: Clone + Send + Sync,
+    B: ParallelBackend<I, K>,
+    P: ParallelDpProblem<I, K>,
+{
+    /// Creates a new `ParallelDpCache` directly (const-compatible).
+    ///
+    /// Use this when you need to construct a `ParallelDpCache` at compile time.
+    /// Both the backend and problem must support const construction.
+    /// Note: Thread pool will be `None` when using const construction.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use aoc_solutions::utils::dp_cache::{ParallelDpCache, ParallelArrayBackend, DpProblem};
+    ///
+    /// struct Fibonacci;
+    /// impl DpProblem<usize, u64> for Fibonacci {
+    ///     fn deps(&self, n: &usize) -> Vec<usize> {
+    ///         if *n <= 1 { vec![] } else { vec![n - 1, n - 2] }
+    ///     }
+    ///     fn compute(&self, n: &usize, deps: Vec<u64>) -> u64 {
+    ///         if *n <= 1 { *n as u64 } else { deps[0] + deps[1] }
+    ///     }
+    /// }
+    ///
+    /// const CACHE: ParallelDpCache<usize, u64, ParallelArrayBackend<u64, 21>, Fibonacci> =
+    ///     ParallelDpCache::new_const(ParallelArrayBackend::new(), Fibonacci);
+    /// ```
+    pub const fn new_const(backend: B, problem: P) -> Self {
+        Self {
+            backend,
+            problem,
+            pool: None,
             _phantom: PhantomData,
         }
     }
