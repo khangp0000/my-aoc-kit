@@ -86,18 +86,35 @@ fn main() {
     println!("Testing {} queries (n: 0-{})\n", test_cases.len(), MAX_N - 1);
 
     // =========================================================================
+    // Iterative baseline (optimal solution)
+    // =========================================================================
+    println!("=== Iterative baseline (optimal) ===");
+
+    // Iterative computation - the optimal O(n) solution
+    println!("Running iterative computation (full range)...");
+    let start = Instant::now();
+    let iterative_results: Vec<u128> = test_cases.iter().map(|&n| fib_iterative(n)).collect();
+    let iterative_time = start.elapsed();
+    println!("Iterative (sequential):      {:?}", iterative_time);
+
+    // Iterative + par_iter
+    println!("Running iterative + par_iter...");
+    let start = Instant::now();
+    let iterative_par_results: Vec<u128> =
+        test_cases.par_iter().map(|&n| fib_iterative(n)).collect();
+    let iterative_par_time = start.elapsed();
+    println!("Iterative + par_iter:        {:?}", iterative_par_time);
+
+    // =========================================================================
     // Single-threaded benchmarks
     // =========================================================================
-    println!("=== Single-threaded ===");
+    println!("\n=== Single-threaded ===");
 
     // No cache - direct computation (baseline) - only for small n
     println!("Running no cache (direct recursive) on small n...");
     let small_test_cases: Vec<usize> = (0..100).map(|i| i % 30).collect(); // Only up to 30
     let start = Instant::now();
-    let no_cache_results: Vec<u128> = small_test_cases
-        .iter()
-        .map(|&n| fib_direct(n))
-        .collect();
+    let no_cache_results: Vec<u128> = small_test_cases.iter().map(|&n| fib_direct(n)).collect();
     let no_cache_time = start.elapsed();
     println!("No cache (n<=30):            {:?}", no_cache_time);
 
@@ -344,7 +361,9 @@ fn main() {
     // Verify full test cases
     for (idx, &n) in test_cases.iter().enumerate() {
         let expected = fib_iterative(n);
-        if array_results[idx] != expected
+        if iterative_results[idx] != expected
+            || iterative_par_results[idx] != expected
+            || array_results[idx] != expected
             || vec_results[idx] != expected
             || hashmap_results[idx] != expected
             || par_array_results[idx] != expected
@@ -381,6 +400,10 @@ fn main() {
     // Summary
     // =========================================================================
     println!("\n=== Performance Summary ===");
+
+    println!("\nIterative baseline (optimal O(n) solution):");
+    println!("  Iterative (sequential):     {:?}", iterative_time);
+    println!("  Iterative + par_iter:       {:?}", iterative_par_time);
 
     println!("\nFull range (n: 0-{}) - Single-threaded:", MAX_N - 1);
     println!("  ArrayBackend:               {:?}", array_time);
@@ -426,6 +449,16 @@ fn main() {
     );
     println!("  Best cached time: {:?}", best_cached);
 
+    println!("\nIterative vs DP Cache:");
+    println!(
+        "  ArrayBackend vs Iterative: {:.2}x slower",
+        array_time.as_secs_f64() / iterative_time.as_secs_f64()
+    );
+    println!(
+        "  Best cached vs Iterative: {:.2}x slower",
+        best_cached.as_secs_f64() / iterative_time.as_secs_f64()
+    );
+
     println!("\nWrapper overhead (small n):");
     println!(
         "  NoCacheBackend vs direct: {:.2}x",
@@ -435,4 +468,12 @@ fn main() {
         "  ParallelNoCacheBackend vs direct: {:.2}x",
         par_nocache_backend_time.as_secs_f64() / no_cache_time.as_secs_f64()
     );
+
+    println!("\n=== Conclusion ===");
+    println!("For Fibonacci, iterative is {:.0}x faster than the best DP cache.", 
+             best_cached.as_secs_f64() / iterative_time.as_secs_f64());
+    println!("DP cache is useful when:");
+    println!("  - No simple iterative solution exists");
+    println!("  - Subproblems have complex dependencies (not just n-1, n-2)");
+    println!("  - You need memoization across multiple queries");
 }
