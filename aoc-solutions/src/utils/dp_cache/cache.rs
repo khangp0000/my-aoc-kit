@@ -45,7 +45,7 @@ use super::problem::DpProblem;
 ///     .backend(VecBackend::new())
 ///     .problem(Factorial)
 ///     .build();
-/// assert_eq!(cache.get(&5), 120);
+/// assert_eq!(cache.get(&5).unwrap(), 120);
 /// ```
 ///
 /// # Example (closure-based with ClosureProblem)
@@ -63,7 +63,7 @@ use super::problem::DpProblem;
 ///     .problem(fib)
 ///     .build();
 ///
-/// assert_eq!(cache.get(&10), 55);
+/// assert_eq!(cache.get(&10).unwrap(), 55);
 /// ```
 pub struct DpCache<I, K, B, P>
 where
@@ -99,26 +99,28 @@ where
     ///
     /// # Returns
     ///
-    /// The computed or cached value for the index.
+    /// `Ok(value)` - The computed or cached value for the index.
+    /// `Err(index)` - If the index cannot be stored (e.g., out of bounds for fixed-size backends).
     ///
     /// # Panics
     ///
     /// May panic or cause undefined behavior if the dependency graph contains cycles.
-    pub fn get(&self, index: &I) -> K {
+    pub fn get(&self, index: &I) -> Result<K, I> {
         // Fast path: check if already computed
         if let Some(value) = self.backend.borrow().get(index) {
-            return value.clone();
+            return Ok(value.clone());
         }
 
         // Get dependencies and resolve them recursively (no borrow held)
         let deps = self.problem.deps(index);
-        let dep_values: Vec<K> = deps.into_iter().map(|dep| self.get(&dep)).collect();
+        let dep_values: Result<Vec<K>, I> = deps.into_iter().map(|dep| self.get(&dep)).collect();
+        let dep_values = dep_values?;
 
         // Store the value, computing inside the closure only if not already cached
-        self.backend
+        Ok(self.backend
             .borrow_mut()
-            .get_or_insert(index.clone(), || self.problem.compute(index, dep_values))
-            .clone()
+            .get_or_insert(index.clone(), || self.problem.compute(index, dep_values))?
+            .clone())
     }
 }
 

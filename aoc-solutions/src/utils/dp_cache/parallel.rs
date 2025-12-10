@@ -50,7 +50,7 @@ use super::problem::ParallelDpProblem;
 ///     .backend(DashMapBackend::new())
 ///     .problem(Collatz)
 ///     .build();
-/// assert_eq!(cache.get(&27), 111);
+/// assert_eq!(cache.get(&27).unwrap(), 111);
 /// ```
 pub struct ParallelDpCache<I, K, B, P>
 where
@@ -82,10 +82,10 @@ where
     /// If the value is already cached, returns a clone of the cached value.
     /// Otherwise, resolves all dependencies in parallel using Rayon, computes
     /// the value using the compute function, caches it, and returns a clone.
-    pub fn get(&self, index: &I) -> K {
+    pub fn get(&self, index: &I) -> Result<K, I> {
         // Fast path: check if already computed
         if let Some(value) = self.backend.get(index) {
-            return value;
+            return Ok(value);
         }
 
         // Get dependencies (no locks held)
@@ -95,13 +95,13 @@ where
         let resolve_deps = || {
             deps.into_par_iter()
                 .map(|dep| self.get(&dep))
-                .collect::<Vec<K>>()
+                .collect::<Result<Vec<K>, I>>()
         };
 
         let dep_values = match &self.pool {
             Some(pool) => pool.install(resolve_deps),
             None => resolve_deps(),
-        };
+        }?;
 
         // Insert using get_or_insert - only compute is inside the closure
         // dep_values is already resolved outside, so no recursive calls happen while holding the lock

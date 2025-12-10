@@ -75,7 +75,7 @@ fn main() {
         .backend(HashMapBackend::new())
         .problem(Collatz)
         .build();
-    let hashmap_results: Vec<u64> = inputs.iter().map(|n| hashmap_cache.get(n)).collect();
+    let hashmap_results: Vec<u64> = inputs.iter().map(|n| hashmap_cache.get(n).unwrap()).collect();
     let hashmap_time = start.elapsed();
     println!("HashMapBackend (sequential):       {:?}", hashmap_time);
 
@@ -85,7 +85,7 @@ fn main() {
         .backend(DashMapBackend::new())
         .problem(Collatz)
         .build();
-    let dashmap_results: Vec<u64> = inputs.iter().map(|n| dashmap_cache.get(n)).collect();
+    let dashmap_results: Vec<u64> = inputs.iter().map(|n| dashmap_cache.get(n).unwrap()).collect();
     let dashmap_time = start.elapsed();
     println!("DashMapBackend (parallel):         {:?}", dashmap_time);
 
@@ -95,7 +95,7 @@ fn main() {
         .backend(DashMapBackend::new())
         .problem(Collatz)
         .build();
-    let dashmap_par_results: Vec<u64> = inputs.par_iter().map(|n| dashmap_cache2.get(n)).collect();
+    let dashmap_par_results: Vec<u64> = inputs.par_iter().map(|n| dashmap_cache2.get(n).unwrap()).collect();
     let dashmap_par_time = start.elapsed();
     println!("DashMapBackend + par_iter:         {:?}", dashmap_par_time);
 
@@ -105,7 +105,7 @@ fn main() {
         .backend(RwLockHashMapBackend::new())
         .problem(Collatz)
         .build();
-    let rwlock_results: Vec<u64> = inputs.iter().map(|n| rwlock_cache.get(n)).collect();
+    let rwlock_results: Vec<u64> = inputs.iter().map(|n| rwlock_cache.get(n).unwrap()).collect();
     let rwlock_time = start.elapsed();
     println!("RwLockHashMapBackend (parallel):   {:?}", rwlock_time);
 
@@ -115,7 +115,7 @@ fn main() {
         .backend(RwLockHashMapBackend::new())
         .problem(Collatz)
         .build();
-    let rwlock_par_results: Vec<u64> = inputs.par_iter().map(|n| rwlock_cache2.get(n)).collect();
+    let rwlock_par_results: Vec<u64> = inputs.par_iter().map(|n| rwlock_cache2.get(n).unwrap()).collect();
     let rwlock_par_time = start.elapsed();
     println!("RwLockHashMapBackend + par_iter:   {:?}", rwlock_par_time);
 

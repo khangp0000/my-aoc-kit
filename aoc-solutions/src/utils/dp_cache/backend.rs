@@ -16,6 +16,7 @@ use dashmap::DashMap;
 ///
 /// - `get` returns `None` if the index has not been computed yet
 /// - `get_or_insert` computes and stores the value if not present, then returns a reference
+/// - Returns `Err(index)` if the index cannot be stored (e.g., out of bounds for fixed-size backends)
 /// - The compute function passed to `get_or_insert` should not require `&self` reference
 ///   to the cache (dependencies should already be resolved)
 pub trait Backend<I, K> {
@@ -24,9 +25,11 @@ pub trait Backend<I, K> {
 
     /// Returns the cached value, or computes and stores it using the provided function.
     ///
+    /// Returns `Err(index)` if the index cannot be stored (e.g., out of bounds).
+    ///
     /// The compute function receives no arguments - all dependencies should be
     /// captured in the closure before calling this method.
-    fn get_or_insert<F>(&mut self, index: I, compute: F) -> &K
+    fn get_or_insert<F>(&mut self, index: I, compute: F) -> Result<&K, I>
     where
         F: FnOnce() -> K;
 }
@@ -50,7 +53,7 @@ pub trait ParallelBackend<I, K>: Send + Sync {
     ///
     /// The compute function receives no arguments - all dependencies should be
     /// captured in the closure before calling this method.
-    fn get_or_insert<F>(&self, index: I, compute: F) -> K
+    fn get_or_insert<F>(&self, index: I, compute: F) -> Result<K, I>
     where
         F: FnOnce() -> K;
 }
@@ -89,7 +92,7 @@ impl<K> Backend<usize, K> for VecBackend<K> {
         self.data.get(*index).and_then(|opt| opt.as_ref())
     }
 
-    fn get_or_insert<F>(&mut self, index: usize, compute: F) -> &K
+    fn get_or_insert<F>(&mut self, index: usize, compute: F) -> Result<&K, usize>
     where
         F: FnOnce() -> K,
     {
@@ -103,7 +106,7 @@ impl<K> Backend<usize, K> for VecBackend<K> {
             self.data[index] = Some(compute());
         }
 
-        self.data[index].as_ref().unwrap()
+        Ok(self.data[index].as_ref().unwrap())
     }
 }
 
@@ -136,11 +139,11 @@ impl<I: Hash + Eq, K> Backend<I, K> for HashMapBackend<I, K> {
         self.data.get(index)
     }
 
-    fn get_or_insert<F>(&mut self, index: I, compute: F) -> &K
+    fn get_or_insert<F>(&mut self, index: I, compute: F) -> Result<&K, I>
     where
         F: FnOnce() -> K,
     {
-        self.data.entry(index).or_insert_with(compute)
+        Ok(self.data.entry(index).or_insert_with(compute))
     }
 }
 
@@ -190,15 +193,15 @@ where
         self.data.get(index).map(|entry| entry.value().clone())
     }
 
-    fn get_or_insert<F>(&self, index: I, compute: F) -> K
+    fn get_or_insert<F>(&self, index: I, compute: F) -> Result<K, I>
     where
         F: FnOnce() -> K,
     {
-        self.data
+        Ok(self.data
             .entry(index)
             .or_insert_with(compute)
             .value()
-            .clone()
+            .clone())
     }
 }
 
@@ -252,7 +255,7 @@ where
             .cloned()
     }
 
-    fn get_or_insert<F>(&self, index: I, compute: F) -> K
+    fn get_or_insert<F>(&self, index: I, compute: F) -> Result<K, I>
     where
         F: FnOnce() -> K,
     {
@@ -260,13 +263,13 @@ where
         {
             let read_guard = self.data.read().expect("RwLock poisoned");
             if let Some(value) = read_guard.get(&index) {
-                return value.clone();
+                return Ok(value.clone());
             }
         }
 
         // Slow path: acquire write lock and insert
         let mut write_guard = self.data.write().expect("RwLock poisoned");
         // Double-check after acquiring write lock (another thread may have inserted)
-        write_guard.entry(index).or_insert_with(compute).clone()
+        Ok(write_guard.entry(index).or_insert_with(compute).clone())
     }
 }

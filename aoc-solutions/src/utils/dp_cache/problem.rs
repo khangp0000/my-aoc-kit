@@ -36,7 +36,7 @@ use std::marker::PhantomData;
 ///     .backend(VecBackend::new())
 ///     .problem(Fibonacci)
 ///     .build();
-/// assert_eq!(cache.get(&10), 55);
+/// assert_eq!(cache.get(&10).unwrap(), 55);
 /// ```
 pub trait DpProblem<I, K> {
     /// Returns the indices that this index depends on.
@@ -87,7 +87,7 @@ impl<T, I, K> ParallelDpProblem<I, K> for T where T: DpProblem<I, K> + Send + Sy
 ///     .problem(fib)
 ///     .build();
 ///
-/// assert_eq!(cache.get(&10), 55);
+/// assert_eq!(cache.get(&10).unwrap(), 55);
 /// ```
 pub struct ClosureProblem<I, K, D, C>
 where

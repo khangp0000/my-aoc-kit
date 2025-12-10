@@ -92,7 +92,7 @@ fn main() {
                 .backend(VecBackend::with_capacity(j + 1))
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let vec_time = start.elapsed();
@@ -108,7 +108,7 @@ fn main() {
                 .backend(HashMapBackend::new())
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let hashmap_time = start.elapsed();
@@ -124,7 +124,7 @@ fn main() {
                 .backend(DashMapBackend::new())
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let dashmap_time = start.elapsed();
@@ -140,7 +140,7 @@ fn main() {
                 .backend(DashMapBackend::new())
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let dashmap_par_time = start.elapsed();
@@ -156,7 +156,7 @@ fn main() {
                 .backend(RwLockHashMapBackend::new())
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let rwlock_time = start.elapsed();
@@ -172,7 +172,7 @@ fn main() {
                 .backend(RwLockHashMapBackend::new())
                 .problem(Pattern { i })
                 .build();
-            cache.get(&j)
+            cache.get(&j).unwrap()
         })
         .collect();
     let rwlock_par_time = start.elapsed();

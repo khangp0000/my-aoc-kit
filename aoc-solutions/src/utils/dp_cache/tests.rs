@@ -15,9 +15,9 @@ fn test_basic_cache_creation_and_single_value() {
         .problem(NoDeps)
         .build();
 
-    assert_eq!(cache.get(&5), 10);
-    assert_eq!(cache.get(&0), 0);
-    assert_eq!(cache.get(&100), 200);
+    assert_eq!(cache.get(&5).unwrap(), 10);
+    assert_eq!(cache.get(&0).unwrap(), 0);
+    assert_eq!(cache.get(&100).unwrap(), 200);
 }
 
 /// Simple problem with no dependencies for testing
@@ -41,14 +41,14 @@ fn test_fibonacci_linear_dependency_chain() {
         .problem(Fibonacci)
         .build();
 
-    assert_eq!(cache.get(&0), 0);
-    assert_eq!(cache.get(&1), 1);
-    assert_eq!(cache.get(&2), 1);
-    assert_eq!(cache.get(&3), 2);
-    assert_eq!(cache.get(&4), 3);
-    assert_eq!(cache.get(&5), 5);
-    assert_eq!(cache.get(&10), 55);
-    assert_eq!(cache.get(&20), 6765);
+    assert_eq!(cache.get(&0).unwrap(), 0);
+    assert_eq!(cache.get(&1).unwrap(), 1);
+    assert_eq!(cache.get(&2).unwrap(), 1);
+    assert_eq!(cache.get(&3).unwrap(), 2);
+    assert_eq!(cache.get(&4).unwrap(), 3);
+    assert_eq!(cache.get(&5).unwrap(), 5);
+    assert_eq!(cache.get(&10).unwrap(), 55);
+    assert_eq!(cache.get(&20).unwrap(), 6765);
 }
 
 #[test]
@@ -89,14 +89,14 @@ fn test_diamond_dependency_memoization() {
         .problem(Diamond { count: compute_count.clone() })
         .build();
 
-    let result = cache.get(&0);
+    let result = cache.get(&0).unwrap();
     // D=10, B=20, C=30, A=50
     assert_eq!(result, 50);
     // Should have computed exactly 4 values (A, B, C, D)
     assert_eq!(compute_count.get(), 4);
 
     // Getting A again should not recompute
-    let _ = cache.get(&0);
+    let _ = cache.get(&0).unwrap();
     assert_eq!(compute_count.get(), 4);
 }
 
@@ -105,11 +105,11 @@ fn test_vec_backend_get_or_insert() {
     let mut backend: VecBackend<i32> = VecBackend::new();
 
     // Insert value at index 5
-    let value = backend.get_or_insert(5, || 42);
+    let value = backend.get_or_insert(5, || 42).unwrap();
     assert_eq!(*value, 42);
 
     // Get same index again - should return cached value, not recompute
-    let value = backend.get_or_insert(5, || 999);
+    let value = backend.get_or_insert(5, || 999).unwrap();
     assert_eq!(*value, 42);
 
     // Get returns the cached value
@@ -119,7 +119,7 @@ fn test_vec_backend_get_or_insert() {
     assert_eq!(backend.get(&10), None);
 
     // Insert at larger index - should not affect existing
-    let value = backend.get_or_insert(10, || 100);
+    let value = backend.get_or_insert(10, || 100).unwrap();
     assert_eq!(*value, 100);
     assert_eq!(backend.get(&5), Some(&42));
 }
@@ -129,11 +129,11 @@ fn test_hashmap_backend_get_or_insert() {
     let mut backend: HashMapBackend<String, i32> = HashMapBackend::new();
 
     // Insert value
-    let value = backend.get_or_insert("key1".to_string(), || 42);
+    let value = backend.get_or_insert("key1".to_string(), || 42).unwrap();
     assert_eq!(*value, 42);
 
     // Get same key again - should return cached value, not recompute
-    let value = backend.get_or_insert("key1".to_string(), || 999);
+    let value = backend.get_or_insert("key1".to_string(), || 999).unwrap();
     assert_eq!(*value, 42);
 
     // Get returns the cached value
@@ -143,7 +143,7 @@ fn test_hashmap_backend_get_or_insert() {
     assert_eq!(backend.get(&"key2".to_string()), None);
 
     // Insert different key - should not affect existing
-    let value = backend.get_or_insert("key2".to_string(), || 100);
+    let value = backend.get_or_insert("key2".to_string(), || 100).unwrap();
     assert_eq!(*value, 100);
     assert_eq!(backend.get(&"key1".to_string()), Some(&42));
 }
@@ -177,10 +177,10 @@ fn test_hashmap_backend_with_cache() {
         .problem(StringLength)
         .build();
 
-    assert_eq!(cache.get(&"".to_string()), 0);
-    assert_eq!(cache.get(&"a".to_string()), 1);
-    assert_eq!(cache.get(&"ab".to_string()), 2);
-    assert_eq!(cache.get(&"abc".to_string()), 3);
+    assert_eq!(cache.get(&"".to_string()).unwrap(), 0);
+    assert_eq!(cache.get(&"a".to_string()).unwrap(), 1);
+    assert_eq!(cache.get(&"ab".to_string()).unwrap(), 2);
+    assert_eq!(cache.get(&"abc".to_string()).unwrap(), 3);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn test_collatz_base_case() {
         .backend(HashMapBackend::new())
         .problem(Collatz)
         .build();
-    assert_eq!(cache.get(&1u64), 0);
+    assert_eq!(cache.get(&1u64).unwrap(), 0);
 }
 
 #[test]
@@ -200,11 +200,11 @@ fn test_collatz_even_numbers() {
         .problem(Collatz)
         .build();
     // 2 -> 1 (length 1)
-    assert_eq!(cache.get(&2u64), 1);
+    assert_eq!(cache.get(&2u64).unwrap(), 1);
     // 4 -> 2 -> 1 (length 2)
-    assert_eq!(cache.get(&4u64), 2);
+    assert_eq!(cache.get(&4u64).unwrap(), 2);
     // 8 -> 4 -> 2 -> 1 (length 3)
-    assert_eq!(cache.get(&8u64), 3);
+    assert_eq!(cache.get(&8u64).unwrap(), 3);
 }
 
 #[test]
@@ -214,9 +214,9 @@ fn test_collatz_odd_numbers() {
         .problem(Collatz)
         .build();
     // 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 7)
-    assert_eq!(cache.get(&3u64), 7);
+    assert_eq!(cache.get(&3u64).unwrap(), 7);
     // 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 5)
-    assert_eq!(cache.get(&5u64), 5);
+    assert_eq!(cache.get(&5u64).unwrap(), 5);
 }
 
 #[test]
@@ -226,9 +226,9 @@ fn test_collatz_known_values() {
         .problem(Collatz)
         .build();
     // Known Collatz chain lengths
-    assert_eq!(cache.get(&6u64), 8); // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
-    assert_eq!(cache.get(&7u64), 16); // 7 has a longer chain
-    assert_eq!(cache.get(&27u64), 111); // 27 is famous for its long chain
+    assert_eq!(cache.get(&6u64).unwrap(), 8); // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
+    assert_eq!(cache.get(&7u64).unwrap(), 16); // 7 has a longer chain
+    assert_eq!(cache.get(&27u64).unwrap(), 111); // 27 is famous for its long chain
 }
 
 #[test]
@@ -244,7 +244,7 @@ fn test_parallel_collatz_matches_sequential() {
         .build();
 
     for n in 1..=100u64 {
-        assert_eq!(seq_cache.get(&n), par_cache.get(&n), "Mismatch at n={}", n);
+        assert_eq!(seq_cache.get(&n).unwrap(), par_cache.get(&n).unwrap(), "Mismatch at n={}", n);
     }
 }
 
@@ -256,10 +256,10 @@ fn test_dashmap_collatz() {
         .problem(Collatz)
         .build();
 
-    assert_eq!(par_cache.get(&1u64), 0);
-    assert_eq!(par_cache.get(&2u64), 1);
-    assert_eq!(par_cache.get(&3u64), 7);
-    assert_eq!(par_cache.get(&27u64), 111);
+    assert_eq!(par_cache.get(&1u64).unwrap(), 0);
+    assert_eq!(par_cache.get(&2u64).unwrap(), 1);
+    assert_eq!(par_cache.get(&3u64).unwrap(), 7);
+    assert_eq!(par_cache.get(&27u64).unwrap(), 111);
 }
 
 // =============================================================================
@@ -294,11 +294,11 @@ fn test_trait_based_fibonacci() {
         .problem(Fibonacci)
         .build();
 
-    assert_eq!(cache.get(&0), 0);
-    assert_eq!(cache.get(&1), 1);
-    assert_eq!(cache.get(&2), 1);
-    assert_eq!(cache.get(&10), 55);
-    assert_eq!(cache.get(&20), 6765);
+    assert_eq!(cache.get(&0).unwrap(), 0);
+    assert_eq!(cache.get(&1).unwrap(), 1);
+    assert_eq!(cache.get(&2).unwrap(), 1);
+    assert_eq!(cache.get(&10).unwrap(), 55);
+    assert_eq!(cache.get(&20).unwrap(), 6765);
 }
 
 /// Collatz problem using the trait-based API
@@ -331,10 +331,10 @@ fn test_trait_based_collatz_sequential() {
         .problem(Collatz)
         .build();
 
-    assert_eq!(cache.get(&1), 0);
-    assert_eq!(cache.get(&2), 1);
-    assert_eq!(cache.get(&3), 7);
-    assert_eq!(cache.get(&27), 111);
+    assert_eq!(cache.get(&1).unwrap(), 0);
+    assert_eq!(cache.get(&2).unwrap(), 1);
+    assert_eq!(cache.get(&3).unwrap(), 7);
+    assert_eq!(cache.get(&27).unwrap(), 111);
 }
 
 #[test]
@@ -344,10 +344,10 @@ fn test_trait_based_collatz_parallel() {
         .problem(Collatz)
         .build();
 
-    assert_eq!(cache.get(&1), 0);
-    assert_eq!(cache.get(&2), 1);
-    assert_eq!(cache.get(&3), 7);
-    assert_eq!(cache.get(&27), 111);
+    assert_eq!(cache.get(&1).unwrap(), 0);
+    assert_eq!(cache.get(&2).unwrap(), 1);
+    assert_eq!(cache.get(&3).unwrap(), 7);
+    assert_eq!(cache.get(&27).unwrap(), 111);
 }
 
 /// Factorial problem using the trait-based API
@@ -378,10 +378,10 @@ fn test_trait_based_factorial() {
         .problem(Factorial)
         .build();
 
-    assert_eq!(cache.get(&0), 1);
-    assert_eq!(cache.get(&1), 1);
-    assert_eq!(cache.get(&5), 120);
-    assert_eq!(cache.get(&10), 3628800);
+    assert_eq!(cache.get(&0).unwrap(), 1);
+    assert_eq!(cache.get(&1).unwrap(), 1);
+    assert_eq!(cache.get(&5).unwrap(), 120);
+    assert_eq!(cache.get(&10).unwrap(), 3628800);
 }
 
 #[test]
@@ -399,8 +399,8 @@ fn test_trait_based_matches_closure_based() {
 
     for n in 0..=20 {
         assert_eq!(
-            trait_cache.get(&n),
-            trait_cache2.get(&n),
+            trait_cache.get(&n).unwrap(),
+            trait_cache2.get(&n).unwrap(),
             "Mismatch at n={}",
             n
         );
@@ -419,10 +419,10 @@ fn test_rwlock_collatz() {
         .problem(Collatz)
         .build();
 
-    assert_eq!(par_cache.get(&1u64), 0);
-    assert_eq!(par_cache.get(&2u64), 1);
-    assert_eq!(par_cache.get(&3u64), 7);
-    assert_eq!(par_cache.get(&27u64), 111);
+    assert_eq!(par_cache.get(&1u64).unwrap(), 0);
+    assert_eq!(par_cache.get(&2u64).unwrap(), 1);
+    assert_eq!(par_cache.get(&3u64).unwrap(), 7);
+    assert_eq!(par_cache.get(&27u64).unwrap(), 111);
 }
 
 #[test]
@@ -438,7 +438,7 @@ fn test_rwlock_collatz_matches_sequential() {
         .build();
 
     for n in 1..=100u64 {
-        assert_eq!(seq_cache.get(&n), par_cache.get(&n), "Mismatch at n={}", n);
+        assert_eq!(seq_cache.get(&n).unwrap(), par_cache.get(&n).unwrap(), "Mismatch at n={}", n);
     }
 }
 
@@ -449,10 +449,10 @@ fn test_trait_based_collatz_rwlock() {
         .problem(Collatz)
         .build();
 
-    assert_eq!(cache.get(&1), 0);
-    assert_eq!(cache.get(&2), 1);
-    assert_eq!(cache.get(&3), 7);
-    assert_eq!(cache.get(&27), 111);
+    assert_eq!(cache.get(&1).unwrap(), 0);
+    assert_eq!(cache.get(&2).unwrap(), 1);
+    assert_eq!(cache.get(&3).unwrap(), 7);
+    assert_eq!(cache.get(&27).unwrap(), 111);
 }
 
 // =============================================================================
@@ -464,11 +464,11 @@ fn test_dashmap_backend_get_or_insert() {
     let backend: DashMapBackend<String, i32> = DashMapBackend::new();
 
     // Insert value
-    let value = backend.get_or_insert("key1".to_string(), || 42);
+    let value = backend.get_or_insert("key1".to_string(), || 42).unwrap();
     assert_eq!(value, 42);
 
     // Get same key again - should return cached value, not recompute
-    let value = backend.get_or_insert("key1".to_string(), || 999);
+    let value = backend.get_or_insert("key1".to_string(), || 999).unwrap();
     assert_eq!(value, 42);
 
     // Get returns the cached value
@@ -478,7 +478,7 @@ fn test_dashmap_backend_get_or_insert() {
     assert_eq!(backend.get(&"key2".to_string()), None);
 
     // Insert different key - should not affect existing
-    let value = backend.get_or_insert("key2".to_string(), || 100);
+    let value = backend.get_or_insert("key2".to_string(), || 100).unwrap();
     assert_eq!(value, 100);
     assert_eq!(backend.get(&"key1".to_string()), Some(42));
 }
@@ -488,11 +488,11 @@ fn test_rwlock_backend_get_or_insert() {
     let backend: RwLockHashMapBackend<String, i32> = RwLockHashMapBackend::new();
 
     // Insert value
-    let value = backend.get_or_insert("key1".to_string(), || 42);
+    let value = backend.get_or_insert("key1".to_string(), || 42).unwrap();
     assert_eq!(value, 42);
 
     // Get same key again - should return cached value, not recompute
-    let value = backend.get_or_insert("key1".to_string(), || 999);
+    let value = backend.get_or_insert("key1".to_string(), || 999).unwrap();
     assert_eq!(value, 42);
 
     // Get returns the cached value
@@ -502,7 +502,7 @@ fn test_rwlock_backend_get_or_insert() {
     assert_eq!(backend.get(&"key2".to_string()), None);
 
     // Insert different key - should not affect existing
-    let value = backend.get_or_insert("key2".to_string(), || 100);
+    let value = backend.get_or_insert("key2".to_string(), || 100).unwrap();
     assert_eq!(value, 100);
     assert_eq!(backend.get(&"key1".to_string()), Some(42));
 }
@@ -521,8 +521,8 @@ fn test_all_parallel_backends_match() {
 
     for n in 1..=100u64 {
         assert_eq!(
-            dashmap_cache.get(&n),
-            rwlock_cache.get(&n),
+            dashmap_cache.get(&n).unwrap(),
+            rwlock_cache.get(&n).unwrap(),
             "Mismatch at n={}",
             n
         );

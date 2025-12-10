@@ -48,7 +48,7 @@
 //!     .backend(VecBackend::new())
 //!     .problem(Fibonacci)
 //!     .build();
-//! assert_eq!(cache.get(&10), 55);
+//! assert_eq!(cache.get(&10).unwrap(), 55);
 //! ```
 //!
 //! # Example: Trait-based Parallel with Builder
@@ -73,7 +73,7 @@
 //!     .backend(DashMapBackend::new())
 //!     .problem(Collatz)
 //!     .build();
-//! assert_eq!(cache.get(&27), 111);
+//! assert_eq!(cache.get(&27).unwrap(), 111);
 //! ```
 //!
 //! # Example: Closure-based API with ClosureProblem
@@ -93,7 +93,7 @@
 //!     .problem(fib)
 //!     .build();
 //!
-//! assert_eq!(cache.get(&10), 55);
+//! assert_eq!(cache.get(&10).unwrap(), 55);
 //! ```
 
 mod backend;
