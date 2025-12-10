@@ -1,0 +1,125 @@
+# Implementation Plan
+
+- [x] 1. Update existing VecBackend to use OnceCell
+  - [x] 1.1 Refactor VecBackend from `Vec<Option<K>>` to `Vec<OnceCell<K>>`
+    - Update struct definition to use `OnceCell<K>`
+    - Update `new()` and `with_capacity()` to initialize with `OnceCell::new()`
+    - Update `get()` to use `OnceCell::get()`
+    - Update `get_or_insert()` to use `OnceCell::get_or_init()`
+    - _Requirements: 1.2, 1.3_
+  - [x] 1.2 Add unit tests for updated VecBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test auto-grow behavior still works
+    - _Requirements: 1.2, 1.3_
+
+- [x] 2. Implement ArrayBackend<K, N>
+  - [x] 2.1 Create ArrayBackend struct with const fn new()
+    - Define struct with `[OnceCell<K>; N]` storage
+    - Implement `const fn new()` using inline const syntax
+    - Implement `Default` trait
+    - _Requirements: 1.1, 1.5_
+  - [x] 2.2 Implement Backend trait for ArrayBackend
+    - Implement `get()` with bounds checking
+    - Implement `get_or_insert()` with bounds checking and OnceCell::get_or_init
+    - Return `Err(index)` for out-of-bounds access
+    - _Requirements: 1.2, 1.3, 1.4_
+  - [x] 2.3 Add unit tests for ArrayBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test out-of-bounds returns error with correct index
+    - Test const construction compiles in const context
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+
+- [x] 3. Implement Array2DBackend<K, ROWS, COLS>
+  - [x] 3.1 Create Array2DBackend struct with const fn new()
+    - Define struct with `[[OnceCell<K>; COLS]; ROWS]` storage
+    - Implement `const fn new()` using nested inline const syntax
+    - Implement `Default` trait
+    - _Requirements: 2.1, 2.5_
+  - [x] 3.2 Implement Backend trait for Array2DBackend
+    - Implement `get()` with row and column bounds checking
+    - Implement `get_or_insert()` with bounds checking and OnceCell::get_or_init
+    - Return `Err((row, col))` for out-of-bounds access
+    - _Requirements: 2.2, 2.3, 2.4_
+  - [x] 3.3 Add unit tests for Array2DBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test row out-of-bounds returns error
+    - Test column out-of-bounds returns error
+    - Test const construction compiles in const context
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+
+- [x] 4. Implement Vec2DBackend<K>
+  - [x] 4.1 Create Vec2DBackend struct with runtime dimensions
+    - Define struct with `Vec<Vec<OnceCell<K>>>` storage and dimension fields
+    - Implement `new(rows, cols)` constructor
+    - _Requirements: 3.1_
+  - [x] 4.2 Implement Backend trait for Vec2DBackend
+    - Implement `get()` with row and column bounds checking
+    - Implement `get_or_insert()` with bounds checking and OnceCell::get_or_init
+    - Return `Err((row, col))` for out-of-bounds access
+    - _Requirements: 3.2, 3.3, 3.4_
+  - [x] 4.3 Add unit tests for Vec2DBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test out-of-bounds returns error with correct index
+    - Test various dimension combinations
+    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+
+- [x] 5. Checkpoint - Ensure all sequential backend tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Implement ParallelArrayBackend<K, N>
+  - [x] 6.1 Create ParallelArrayBackend struct with const fn new()
+    - Define struct with `[OnceLock<K>; N]` storage
+    - Implement `const fn new()` using inline const syntax
+    - Implement `Default` trait
+    - _Requirements: 4.1_
+  - [x] 6.2 Implement ParallelBackend trait for ParallelArrayBackend
+    - Implement `get()` with bounds checking, returning cloned value
+    - Implement `get_or_insert()` with bounds checking and OnceLock::get_or_init
+    - Return `Err(index)` for out-of-bounds access
+    - _Requirements: 4.1, 4.3, 4.4_
+  - [x] 6.3 Add unit tests for ParallelArrayBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test out-of-bounds returns error with correct index
+    - Test concurrent access from multiple threads
+    - Test compute called exactly once under contention
+    - _Requirements: 4.1, 4.3, 4.4_
+
+- [x] 7. Implement ParallelArray2DBackend<K, ROWS, COLS>
+  - [x] 7.1 Create ParallelArray2DBackend struct with const fn new()
+    - Define struct with `[[OnceLock<K>; COLS]; ROWS]` storage
+    - Implement `const fn new()` using nested inline const syntax
+    - Implement `Default` trait
+    - _Requirements: 4.2_
+  - [x] 7.2 Implement ParallelBackend trait for ParallelArray2DBackend
+    - Implement `get()` with row and column bounds checking, returning cloned value
+    - Implement `get_or_insert()` with bounds checking and OnceLock::get_or_init
+    - Return `Err((row, col))` for out-of-bounds access
+    - _Requirements: 4.2, 4.3, 4.4_
+  - [x] 7.3 Add unit tests for ParallelArray2DBackend
+    - Test get returns None for uninitialized indices
+    - Test get_or_insert computes exactly once
+    - Test out-of-bounds returns error with correct index
+    - Test concurrent access from multiple threads
+    - Test compute called exactly once under contention
+    - _Requirements: 4.2, 4.3, 4.4_
+
+- [x] 8. Update module exports and documentation
+  - [x] 8.1 Update mod.rs exports
+    - Export all new backend types from the dp_cache module
+    - Update module documentation with new backend examples
+    - _Requirements: 5.1, 5.2_
+  - [x] 8.2 Add integration tests
+    - Test DpCache builder with ArrayBackend
+    - Test DpCache builder with Array2DBackend
+    - Test DpCache builder with Vec2DBackend
+    - Test ParallelDpCache builder with ParallelArrayBackend
+    - Test ParallelDpCache builder with ParallelArray2DBackend
+    - _Requirements: 5.1, 5.2, 5.3_
+
+- [x] 9. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

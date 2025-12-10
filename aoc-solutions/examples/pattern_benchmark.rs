@@ -13,8 +13,8 @@
 //! Returns None if the result would overflow u64.
 
 use aoc_solutions::utils::dp_cache::{
-    DashMapBackend, DpCache, DpProblem, HashMapBackend, ParallelDpCache, RwLockHashMapBackend,
-    VecBackend,
+    ArrayBackend, DashMapBackend, DpCache, DpProblem, HashMapBackend, ParallelArrayBackend,
+    ParallelDpCache, RwLockHashMapBackend, VecBackend,
 };
 use rayon::prelude::*;
 use std::time::Instant;
@@ -82,7 +82,24 @@ fn main() {
         test_cases.len()
     );
 
-    // 1. VecBackend with DpCache (sequential)
+    // 1. ArrayBackend with DpCache (sequential) - zero allocation
+    const MAX_J: usize = 101;
+    println!("Running ArrayBackend (sequential, zero-alloc)...");
+    let start = Instant::now();
+    let array_results: Vec<Option<u64>> = test_cases
+        .iter()
+        .map(|&(i, j)| {
+            let cache = DpCache::builder()
+                .backend(ArrayBackend::<Option<u64>, MAX_J>::new())
+                .problem(Pattern { i })
+                .build();
+            cache.get(&j).unwrap()
+        })
+        .collect();
+    let array_time = start.elapsed();
+    println!("ArrayBackend (sequential):   {:?}", array_time);
+
+    // 2. VecBackend with DpCache (sequential)
     println!("Running VecBackend (sequential)...");
     let start = Instant::now();
     let vec_results: Vec<Option<u64>> = test_cases
@@ -98,7 +115,7 @@ fn main() {
     let vec_time = start.elapsed();
     println!("VecBackend (sequential):     {:?}", vec_time);
 
-    // 2. HashMapBackend with DpCache (sequential)
+    // 3. HashMapBackend with DpCache (sequential)
     println!("Running HashMapBackend (sequential)...");
     let start = Instant::now();
     let hashmap_results: Vec<Option<u64>> = test_cases
@@ -114,7 +131,39 @@ fn main() {
     let hashmap_time = start.elapsed();
     println!("HashMapBackend (sequential): {:?}", hashmap_time);
 
-    // 3. ParallelDpCache with DashMapBackend (sequential iteration)
+    // 4. ParallelArrayBackend with ParallelDpCache (sequential iteration)
+    println!("Running ParallelArrayBackend (parallel, zero-alloc)...");
+    let start = Instant::now();
+    let par_array_results: Vec<Option<u64>> = test_cases
+        .iter()
+        .map(|&(i, j)| {
+            let cache = ParallelDpCache::builder()
+                .backend(ParallelArrayBackend::<Option<u64>, MAX_J>::new())
+                .problem(Pattern { i })
+                .build();
+            cache.get(&j).unwrap()
+        })
+        .collect();
+    let par_array_time = start.elapsed();
+    println!("ParallelArrayBackend:        {:?}", par_array_time);
+
+    // 5. ParallelArrayBackend + par_iter
+    println!("Running ParallelArrayBackend + par_iter...");
+    let start = Instant::now();
+    let par_array_par_results: Vec<Option<u64>> = test_cases
+        .par_iter()
+        .map(|&(i, j)| {
+            let cache = ParallelDpCache::builder()
+                .backend(ParallelArrayBackend::<Option<u64>, MAX_J>::new())
+                .problem(Pattern { i })
+                .build();
+            cache.get(&j).unwrap()
+        })
+        .collect();
+    let par_array_par_time = start.elapsed();
+    println!("ParallelArrayBackend + par:  {:?}", par_array_par_time);
+
+    // 6. ParallelDpCache with DashMapBackend (sequential iteration)
     println!("Running DashMapBackend (parallel)...");
     let start = Instant::now();
     let dashmap_results: Vec<Option<u64>> = test_cases
@@ -130,7 +179,7 @@ fn main() {
     let dashmap_time = start.elapsed();
     println!("DashMapBackend (parallel):   {:?}", dashmap_time);
 
-    // 4. ParallelDpCache with DashMapBackend + parallel iteration
+    // 7. ParallelDpCache with DashMapBackend + parallel iteration
     println!("Running DashMapBackend + par_iter...");
     let start = Instant::now();
     let dashmap_par_results: Vec<Option<u64>> = test_cases
@@ -146,7 +195,7 @@ fn main() {
     let dashmap_par_time = start.elapsed();
     println!("DashMapBackend + par_iter:   {:?}", dashmap_par_time);
 
-    // 5. ParallelDpCache with RwLockHashMapBackend (sequential iteration)
+    // 8. ParallelDpCache with RwLockHashMapBackend (sequential iteration)
     println!("Running RwLockHashMapBackend (parallel)...");
     let start = Instant::now();
     let rwlock_results: Vec<Option<u64>> = test_cases
@@ -162,7 +211,7 @@ fn main() {
     let rwlock_time = start.elapsed();
     println!("RwLockHashMapBackend (parallel): {:?}", rwlock_time);
 
-    // 6. ParallelDpCache with RwLockHashMapBackend + parallel iteration
+    // 9. ParallelDpCache with RwLockHashMapBackend + parallel iteration
     println!("Running RwLockHashMapBackend + par_iter...");
     let start = Instant::now();
     let rwlock_par_results: Vec<Option<u64>> = test_cases
@@ -178,7 +227,7 @@ fn main() {
     let rwlock_par_time = start.elapsed();
     println!("RwLockHashMapBackend + par_iter: {:?}", rwlock_par_time);
 
-    // 7. Direct computation for verification
+    // 10. Direct computation for verification
     println!("\nVerifying against direct computation...");
     let direct_results: Vec<Option<u64>> = test_cases
         .iter()
@@ -189,8 +238,11 @@ fn main() {
     let mut mismatches = 0;
     for (idx, &(i, j)) in test_cases.iter().enumerate() {
         let direct = direct_results[idx];
-        if direct != vec_results[idx]
+        if direct != array_results[idx]
+            || direct != vec_results[idx]
             || direct != hashmap_results[idx]
+            || direct != par_array_results[idx]
+            || direct != par_array_par_results[idx]
             || direct != dashmap_results[idx]
             || direct != dashmap_par_results[idx]
             || direct != rwlock_results[idx]
@@ -198,8 +250,8 @@ fn main() {
         {
             if mismatches < 5 {
                 println!(
-                    "Mismatch at i={}, j={}: direct={:?}, vec={:?}, hashmap={:?}, dashmap={:?}",
-                    i, j, direct, vec_results[idx], hashmap_results[idx], dashmap_results[idx]
+                    "Mismatch at i={}, j={}: direct={:?}, array={:?}, vec={:?}, hashmap={:?}",
+                    i, j, direct, array_results[idx], vec_results[idx], hashmap_results[idx]
                 );
             }
             all_match = false;
@@ -235,8 +287,11 @@ fn main() {
 
     // Summary
     println!("\nPerformance Summary:");
+    println!("  ArrayBackend (sequential):       {:?}", array_time);
     println!("  VecBackend (sequential):         {:?}", vec_time);
     println!("  HashMapBackend (sequential):     {:?}", hashmap_time);
+    println!("  ParallelArrayBackend:            {:?}", par_array_time);
+    println!("  ParallelArrayBackend + par_iter: {:?}", par_array_par_time);
     println!("  DashMapBackend (parallel):       {:?}", dashmap_time);
     println!("  DashMapBackend + par_iter:       {:?}", dashmap_par_time);
     println!("  RwLockHashMapBackend (parallel): {:?}", rwlock_time);

@@ -7,9 +7,10 @@
 //! - DashMapBackend with ParallelDpCache (parallel)
 //! - RwLockHashMapBackend with ParallelDpCache (parallel)
 //!
-//! Note: VecBackend is not suitable for Collatz because the sequence can produce
-//! very large intermediate values (e.g., 3n+1 for large odd n), causing massive
-//! memory allocation.
+//! Note: VecBackend and ArrayBackend are not suitable for Collatz because the
+//! sequence can produce very large intermediate values (e.g., 3n+1 for large odd n),
+//! causing massive memory allocation or out-of-bounds errors. Use HashMapBackend
+//! or DashMapBackend for sparse/unbounded index spaces like Collatz.
 
 use aoc_solutions::utils::dp_cache::{
     DashMapBackend, DpCache, DpProblem, HashMapBackend, ParallelDpCache, RwLockHashMapBackend,
