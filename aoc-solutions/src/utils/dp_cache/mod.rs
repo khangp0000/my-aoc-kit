@@ -7,8 +7,6 @@
 //!
 //! - [`DpCache`]: Single-threaded cache with `RefCell` for interior mutability
 //! - [`ParallelDpCache`]: Thread-safe cache with parallel dependency resolution using Rayon
-//! - [`DashMapDpCache`]: Type alias for `ParallelDpCache` with `DashMapBackend`
-//! - [`RwLockDpCache`]: Type alias for `ParallelDpCache` with `RwLockHashMapBackend`
 //!
 //! # Backend Types
 //!
@@ -28,7 +26,7 @@
 //!
 //! **Users MUST ensure that dependencies form a DAG (Directed Acyclic Graph).**
 //!
-//! # Example: Trait-based API (recommended)
+//! # Example: Trait-based API with Builder (recommended)
 //!
 //! ```rust
 //! use aoc_solutions::utils::dp_cache::{DpCache, DpProblem, VecBackend};
@@ -46,11 +44,14 @@
 //!     }
 //! }
 //!
-//! let cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
+//! let cache = DpCache::builder()
+//!     .backend(VecBackend::new())
+//!     .problem(Fibonacci)
+//!     .build();
 //! assert_eq!(cache.get(&10), 55);
 //! ```
 //!
-//! # Example: Trait-based Parallel
+//! # Example: Trait-based Parallel with Builder
 //!
 //! ```rust
 //! use aoc_solutions::utils::dp_cache::{ParallelDpCache, DashMapBackend, DpProblem};
@@ -68,27 +69,29 @@
 //!     }
 //! }
 //!
-//! let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
+//! let cache = ParallelDpCache::builder()
+//!     .backend(DashMapBackend::new())
+//!     .problem(Collatz)
+//!     .build();
 //! assert_eq!(cache.get(&27), 111);
 //! ```
 //!
-//! # Example: Closure-based API
+//! # Example: Closure-based API with ClosureProblem
+//!
+//! For quick prototyping, you can use `ClosureProblem` instead of defining a struct:
 //!
 //! ```rust
-//! use aoc_solutions::utils::dp_cache::{DpCache, VecBackend};
+//! use aoc_solutions::utils::dp_cache::{DpCache, ClosureProblem, VecBackend};
 //!
-//! // Fibonacci using closures
-//! let cache = DpCache::new(
-//!     VecBackend::new(),
-//!     |n: &usize| {
-//!         if *n <= 1 { vec![] }
-//!         else { vec![n - 1, n - 2] }
-//!     },
-//!     |n: &usize, deps: Vec<u64>| {
-//!         if *n <= 1 { *n as u64 }
-//!         else { deps[0] + deps[1] }
-//!     },
+//! let fib = ClosureProblem::new(
+//!     |n: &usize| if *n <= 1 { vec![] } else { vec![n - 1, n - 2] },
+//!     |n: &usize, deps: Vec<u64>| if *n <= 1 { *n as u64 } else { deps[0] + deps[1] },
 //! );
+//!
+//! let cache = DpCache::builder()
+//!     .backend(VecBackend::new())
+//!     .problem(fib)
+//!     .build();
 //!
 //! assert_eq!(cache.get(&10), 55);
 //! ```
@@ -103,10 +106,7 @@ pub use backend::{
 };
 pub use cache::DpCache;
 pub use parallel::ParallelDpCache;
-pub use problem::{DpProblem, ParallelDpProblem};
-
-// Type aliases for convenience (re-exported from parallel module)
-pub use parallel::{DashMapDpCache, RwLockDpCache};
+pub use problem::{ClosureProblem, DpProblem, ParallelDpProblem};
 
 #[cfg(test)]
 mod tests;

@@ -2,113 +2,116 @@
 
 ## Overview
 
-This document describes the design for extending the existing `DpCache` with parallel execution support. The extension adds `DashMapDpCache`, a thread-safe cache that uses DashMap for storage and Rayon for concurrent dependency resolution. A Collatz chain length benchmark validates correctness and compares performance between sequential and parallel implementations.
+This document describes the design for extending the existing `DpCache` with parallel execution support. The extension adds `ParallelDpCache`, a thread-safe cache with pluggable backends that uses Rayon for concurrent dependency resolution. Two parallel backends are provided: `DashMapBackend` (using DashMap for lock-free concurrent access) and `RwLockHashMapBackend` (using RwLock<HashMap> for simpler read-heavy workloads).
 
-The implementation is located in `aoc-solutions/src/utils/dp_cache.rs`.
+The implementation is located in `aoc-solutions/src/utils/dp_cache/`.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    DashMapDpCache<I, K, D, C>                           │
+│                    ParallelDpCache<I, K, B, P>                          │
 │  ┌─────────────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │  data: DashMap<I, K>    │  │  dep_fn: D      │  │  compute_fn: C  │  │
-│  │  (direct value storage) │  │  I -> Vec<I>    │  │  (&I, Vec<K>)->K│  │
+│  │  backend: B             │  │  problem: P     │  │  pool: Option<  │  │
+│  │  (ParallelBackend)      │  │  (DpProblem)    │  │  Arc<ThreadPool>│  │
 │  └────────┬────────────────┘  └────────┬────────┘  └───────┬─────────┘  │
-│           │                            │                   │            │
-│  ┌────────┴────────┐                   │                   │            │
-│  │ pool: Option<   │                   │                   │            │
-│  │   Arc<ThreadPool>>                  │                   │            │
-│  └────────┬────────┘                   │                   │            │
 │           │                            │                   │            │
 │           ▼                            ▼                   ▼            │
 │  ┌─────────────────────────────────────────────────────────────────────┐│
-│  │                    get(&self, I) -> K                               ││
-│  │  1. Fast path: check if already in DashMap                          ││
-│  │  2. Get dependencies via dep_fn (no locks held)                     ││
+│  │                    get(&self, &I) -> K                              ││
+│  │  1. Fast path: check if already in backend                          ││
+│  │  2. Get dependencies via problem.deps() (no locks held)             ││
 │  │  3. If pool provided: pool.install(|| par_iter deps)                ││
 │  │     Else: rayon par_iter deps                                       ││
-│  │  4. Insert via entry().or_insert_with(compute_fn)                   ││
+│  │  4. Insert via backend.get_or_insert(compute)                       ││
 │  │  5. Clone and return                                                ││
 │  └─────────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    ParallelBackend Implementations                       │
+├─────────────────────────────────┬───────────────────────────────────────┤
+│  DashMapBackend<I, K>           │  RwLockHashMapBackend<I, K>           │
+│  ┌───────────────────────────┐  │  ┌─────────────────────────────────┐  │
+│  │  data: DashMap<I, K>      │  │  │  data: RwLock<HashMap<I, K>>    │  │
+│  │  - Lock-free reads        │  │  │  - Read lock for gets           │  │
+│  │  - Sharded writes         │  │  │  - Double-checked locking       │  │
+│  │  - High concurrency       │  │  │  - Simpler implementation       │  │
+│  └───────────────────────────┘  │  └─────────────────────────────────┘  │
+└─────────────────────────────────┴───────────────────────────────────────┘
 ```
 
 ## Components and Interfaces
 
-### DashMapDpCache
-
-A parallel DP cache using DashMap directly for storage. Values are stored directly (not wrapped in `OnceLock`) to avoid lifetime issues with DashMap references.
+### ParallelBackend Trait
 
 ```rust
-pub struct DashMapDpCache<I, K, D, C>
+pub trait ParallelBackend<I, K>: Send + Sync {
+    /// Returns a clone of the cached value for the given index, if it exists.
+    fn get(&self, index: &I) -> Option<K>;
+
+    /// Returns the cached value (cloned), or computes and stores it using the provided function.
+    fn get_or_insert<F>(&self, index: I, compute: F) -> K
+    where
+        F: FnOnce() -> K;
+}
+```
+
+### ParallelDpCache
+
+```rust
+pub struct ParallelDpCache<I, K, B, P>
 where
     I: Hash + Eq + Clone + Send + Sync,
     K: Clone + Send + Sync,
-    D: Fn(&I) -> Vec<I> + Send + Sync,
-    C: Fn(&I, Vec<K>) -> K + Send + Sync,
+    B: ParallelBackend<I, K>,
+    P: ParallelDpProblem<I, K>,
+{
+    backend: B,
+    problem: P,
+    pool: Option<Arc<ThreadPool>>,
+    _phantom: PhantomData<(I, K)>,
+}
+
+impl<I, K, B, P> ParallelDpCache<I, K, B, P> {
+    pub fn builder() -> ParallelDpCacheBuilder<I, K, B, P>;
+    pub fn get(&self, index: &I) -> K;
+}
+```
+
+### DashMapBackend
+
+```rust
+pub struct DashMapBackend<I, K>
+where
+    I: Hash + Eq,
 {
     data: DashMap<I, K>,
-    dep_fn: D,
-    compute_fn: C,
-    pool: Option<Arc<ThreadPool>>,
 }
 
-impl<I, K, D, C> DashMapDpCache<I, K, D, C>
-where
-    I: Hash + Eq + Clone + Send + Sync,
-    K: Clone + Send + Sync,
-    D: Fn(&I) -> Vec<I> + Send + Sync,
-    C: Fn(&I, Vec<K>) -> K + Send + Sync,
-{
-    /// Creates a new DashMapDpCache using the global Rayon thread pool.
-    pub fn new(dep_fn: D, compute_fn: C) -> Self;
-    
-    /// Creates a new DashMapDpCache using a custom Rayon thread pool.
-    pub fn with_pool(dep_fn: D, compute_fn: C, pool: Arc<ThreadPool>) -> Self;
-    
-    /// Retrieves the value for the given index, computing it if necessary.
-    pub fn get(&self, index: I) -> K;
+impl<I, K> DashMapBackend<I, K> {
+    pub fn new() -> Self;
 }
 ```
 
-### DashMapDpCache::get Implementation Detail
-
-The `get` method resolves dependencies in parallel using Rayon. Dependencies are resolved outside of any DashMap locks to avoid deadlock:
+### RwLockHashMapBackend
 
 ```rust
-pub fn get(&self, index: I) -> K {
-    // Fast path: check if already computed
-    if let Some(entry) = self.data.get(&index) {
-        return entry.value().clone();
-    }
+pub struct RwLockHashMapBackend<I, K> {
+    data: RwLock<HashMap<I, K>>,
+}
 
-    // Get dependencies (no locks held)
-    let deps = (self.dep_fn)(&index);
-
-    // Resolve dependencies IN PARALLEL using Rayon (no locks held)
-    let resolve_deps = || {
-        deps.into_par_iter()
-            .map(|dep| self.get(dep))  // Recursive parallel calls
-            .collect::<Vec<K>>()
-    };
-
-    let dep_values = match &self.pool {
-        Some(pool) => pool.install(resolve_deps),  // Use provided pool
-        None => resolve_deps(),                     // Use global pool
-    };
-
-    // Insert using or_insert_with - only compute_fn is inside the closure
-    // dep_values is already resolved outside, so no recursive calls happen while holding the lock
-    self.data
-        .entry(index.clone())
-        .or_insert_with(|| (self.compute_fn)(&index, dep_values))
-        .value()
-        .clone()
+impl<I, K> RwLockHashMapBackend<I, K> {
+    pub fn new() -> Self;
 }
 ```
 
-**Key Design Decision**: We cannot use `or_insert_with` for the entire computation because it holds a write lock on the DashMap shard while the closure executes. If the closure calls `self.get()` recursively and hits the same shard, it would deadlock. Instead, we compute dependencies first (releasing any locks), then insert.
+### Type Aliases
+
+```rust
+pub type DashMapDpCache<I, K, P> = ParallelDpCache<I, K, DashMapBackend<I, K>, P>;
+pub type RwLockDpCache<I, K, P> = ParallelDpCache<I, K, RwLockHashMapBackend<I, K>, P>;
+```
 
 ## Data Models
 
@@ -118,76 +121,84 @@ pub fn get(&self, index: I) -> K {
 |-----------|-------------|--------|
 | `I` | Index type | `Hash + Eq + Clone + Send + Sync` |
 | `K` | Value type | `Clone + Send + Sync` |
-| `D` | Dependency function | `Fn(&I) -> Vec<I> + Send + Sync` |
-| `C` | Compute function | `Fn(&I, Vec<K>) -> K + Send + Sync` |
+| `B` | Backend type | `ParallelBackend<I, K>` |
+| `P` | Problem type | `ParallelDpProblem<I, K>` |
 
 ### Collatz Chain Length Problem
 
-The Collatz sequence for a number n:
-- If n = 1: sequence terminates (chain length = 0)
-- If n is even: next = n / 2
-- If n is odd: next = 3n + 1
-
 ```rust
-// Dependency function
-fn collatz_deps(n: &u64) -> Vec<u64> {
-    if *n <= 1 { vec![] }
-    else if n % 2 == 0 { vec![n / 2] }
-    else { vec![3 * n + 1] }
-}
+struct Collatz;
 
-// Compute function
-fn collatz_compute(n: &u64, deps: Vec<u64>) -> u64 {
-    if *n <= 1 { 0 }
-    else { 1 + deps[0] }
+impl DpProblem<u64, u64> for Collatz {
+    fn deps(&self, n: &u64) -> Vec<u64> {
+        if *n <= 1 { vec![] }
+        else if n % 2 == 0 { vec![n / 2] }
+        else { vec![3 * n + 1] }
+    }
+
+    fn compute(&self, _n: &u64, deps: Vec<u64>) -> u64 {
+        if deps.is_empty() { 0 } else { 1 + deps[0] }
+    }
 }
 ```
 
+## Correctness Properties
 
+*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-## Correctness Criteria
+### Property 1: Sequential-Parallel Equivalence
+*For any* DP problem and any index, the result from `ParallelDpCache` with `DashMapBackend` SHALL equal the result from sequential `DpCache` with `HashMapBackend`.
+**Validates: Requirements 1.4, 1.5, 2.3**
 
-The following correctness criteria will be validated through unit tests:
+### Property 2: Backend Equivalence
+*For any* DP problem and any index, the result from `ParallelDpCache` with `DashMapBackend` SHALL equal the result from `ParallelDpCache` with `RwLockHashMapBackend`.
+**Validates: Requirements 2.3, 3.3**
 
-1. **DashMapDpCache correctness**: Parallel cache produces same results as sequential `DpCache`
-2. **DashMapDpCache memoization**: Multiple `get` calls compute only once
-3. **DashMapDpCache concurrent safety**: Concurrent operations on different keys succeed
-4. **Collatz recurrence**: Chain length follows the recurrence relation
-5. **Sequential-parallel equivalence**: DashMapDpCache and DpCache produce identical Collatz results
+### Property 3: Memoization Correctness
+*For any* index that has been computed, subsequent calls to `get` SHALL return the same value without recomputation.
+**Validates: Requirements 1.5**
+
+### Property 4: Collatz Recurrence
+*For any* n > 1, the Collatz chain length SHALL equal 1 + chain_length(next) where next = n/2 (even) or 3n+1 (odd).
+**Validates: Requirements 6.2, 6.3**
 
 ## Error Handling
 
 ### Undefined Behavior (Documented)
 
-The following scenarios result in undefined behavior:
-
-1. **Cyclic dependencies**: Same as single-threaded version - stack overflow or deadlock
+1. **Cyclic dependencies**: Results in deadlock or stack overflow
 
 ### Thread Safety Considerations
 
-- DashMap provides lock-free reads and minimal contention for writes to different shards
+- DashMapBackend provides lock-free reads and minimal contention for writes to different shards
+- RwLockHashMapBackend uses double-checked locking to minimize write lock contention
 - Dependencies are resolved outside of any locks to prevent deadlock
-- `entry().or_insert_with()` only holds the lock during `compute_fn` execution (not during recursive `get` calls)
+- `get_or_insert` only holds the lock during `compute` execution (not during recursive `get` calls)
 
 ## Testing Strategy
 
 ### Unit Tests
 
-- DashMapDpCache Fibonacci computation
-- DashMapDpCache with custom ThreadPool
-- DashMapDpCache memoization verification
-- Collatz chain length correctness (base cases, even/odd numbers, known values)
-- Parallel cache matches sequential cache for Collatz results
+- ParallelDpCache with DashMapBackend: Fibonacci, Collatz computation
+- ParallelDpCache with RwLockHashMapBackend: Fibonacci, Collatz computation
+- Backend get_or_insert behavior for both backends
+- Memoization verification (compute called only once per index)
+- Sequential-parallel equivalence for Collatz results
+- Backend equivalence (DashMap vs RwLock produce same results)
 
-### Benchmark
+### Benchmark Examples
 
-A benchmark example comparing sequential `DpCache` vs parallel `DashMapDpCache`:
-- Input: Collatz chain lengths for numbers 1 to N (configurable)
-- Output: Execution time for each implementation
-- Verification: Both implementations produce identical results
+Two benchmark examples comparing all backends:
+1. `collatz_benchmark.rs`: Collatz chain lengths for random numbers
+2. `pattern_benchmark.rs`: Decimal pattern computation
+
+Both benchmarks:
+- Measure execution time for each backend
+- Verify all backends produce identical results
+- Compare sequential vs parallel performance
 
 ## Dependencies
 
-New crate dependencies for `aoc-solutions`:
+Crate dependencies for `aoc-solutions`:
 - `rayon = "1.10"` - Data parallelism
 - `dashmap = "6"` - Concurrent HashMap

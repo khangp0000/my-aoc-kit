@@ -2,43 +2,45 @@
 //!
 //! Run with: cargo run --example collatz_benchmark --release
 //!
-//! This benchmark computes Collatz chain lengths for 500 uniformly distributed random
-//! numbers in range [1, MAX_N] and compares:
+//! This benchmark computes Collatz chain lengths for random numbers and compares:
 //! - HashMapBackend with DpCache (sequential)
-//! - DashMapDpCache (parallel with DashMap backend)
-//! - RwLockDpCache (parallel with RwLock<HashMap> backend)
+//! - DashMapBackend with ParallelDpCache (parallel)
+//! - RwLockHashMapBackend with ParallelDpCache (parallel)
 //!
 //! Note: VecBackend is not suitable for Collatz because the sequence can produce
 //! very large intermediate values (e.g., 3n+1 for large odd n), causing massive
 //! memory allocation.
 
 use aoc_solutions::utils::dp_cache::{
-    DashMapBackend, DpCache, HashMapBackend, ParallelDpCache, RwLockHashMapBackend,
+    DashMapBackend, DpCache, DpProblem, HashMapBackend, ParallelDpCache, RwLockHashMapBackend,
 };
 use rayon::prelude::*;
 use std::time::Instant;
 
 // =============================================================================
-// Collatz Chain Length Functions
+// Collatz Problem Definition
 // =============================================================================
 
-/// Returns the dependencies for computing the Collatz chain length of n.
-fn collatz_deps(n: &u64) -> Vec<u64> {
-    if *n <= 1 {
-        vec![]
-    } else if n % 2 == 0 {
-        vec![n / 2]
-    } else {
-        vec![3 * n + 1]
-    }
-}
+/// Collatz chain length problem using the trait-based API
+struct Collatz;
 
-/// Computes the Collatz chain length given the index and resolved dependencies.
-fn collatz_compute(_n: &u64, deps: Vec<u64>) -> u64 {
-    if deps.is_empty() {
-        0
-    } else {
-        1 + deps[0]
+impl DpProblem<u64, u64> for Collatz {
+    fn deps(&self, n: &u64) -> Vec<u64> {
+        if *n <= 1 {
+            vec![]
+        } else if n % 2 == 0 {
+            vec![n / 2]
+        } else {
+            vec![3 * n + 1]
+        }
+    }
+
+    fn compute(&self, _n: &u64, deps: Vec<u64>) -> u64 {
+        if deps.is_empty() {
+            0
+        } else {
+            1 + deps[0]
+        }
     }
 }
 
@@ -50,7 +52,6 @@ fn generate_random_inputs(seed: u64, count: usize, max: u64) -> Vec<u64> {
     let mut rng = seed;
     (0..count)
         .map(|_| {
-            // LCG: x = (a * x + c) mod m
             rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
             (rng % max) + 1
         })
@@ -65,45 +66,55 @@ fn main() {
         NUM_SAMPLES, MAX_N
     );
 
-    // Generate random inputs (same for all backends)
     let inputs = generate_random_inputs(42, NUM_SAMPLES, MAX_N);
-
     println!("Sample inputs: {:?}...\n", &inputs[..5]);
 
     // 1. HashMapBackend with DpCache (sequential)
     let start = Instant::now();
-    let hashmap_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let hashmap_cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
     let hashmap_results: Vec<u64> = inputs.iter().map(|n| hashmap_cache.get(n)).collect();
     let hashmap_time = start.elapsed();
     println!("HashMapBackend (sequential):       {:?}", hashmap_time);
 
-    // 2. ParallelDpCache with DashMapBackend (parallel, sequential iteration over inputs)
+    // 2. ParallelDpCache with DashMapBackend (sequential iteration)
     let start = Instant::now();
-    let dashmap_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
+    let dashmap_cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
     let dashmap_results: Vec<u64> = inputs.iter().map(|n| dashmap_cache.get(n)).collect();
     let dashmap_time = start.elapsed();
     println!("DashMapBackend (parallel):         {:?}", dashmap_time);
 
-    // 3. ParallelDpCache with DashMapBackend + parallel iteration over inputs
+    // 3. ParallelDpCache with DashMapBackend + parallel iteration
     let start = Instant::now();
-    let dashmap_cache2 =
-        ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
+    let dashmap_cache2 = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
     let dashmap_par_results: Vec<u64> = inputs.par_iter().map(|n| dashmap_cache2.get(n)).collect();
     let dashmap_par_time = start.elapsed();
     println!("DashMapBackend + par_iter:         {:?}", dashmap_par_time);
 
-    // 4. ParallelDpCache with RwLockHashMapBackend (parallel, sequential iteration over inputs)
+    // 4. ParallelDpCache with RwLockHashMapBackend (sequential iteration)
     let start = Instant::now();
-    let rwlock_cache =
-        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+    let rwlock_cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
     let rwlock_results: Vec<u64> = inputs.iter().map(|n| rwlock_cache.get(n)).collect();
     let rwlock_time = start.elapsed();
     println!("RwLockHashMapBackend (parallel):   {:?}", rwlock_time);
 
-    // 5. ParallelDpCache with RwLockHashMapBackend + parallel iteration over inputs
+    // 5. ParallelDpCache with RwLockHashMapBackend + parallel iteration
     let start = Instant::now();
-    let rwlock_cache2 =
-        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+    let rwlock_cache2 = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
     let rwlock_par_results: Vec<u64> = inputs.par_iter().map(|n| rwlock_cache2.get(n)).collect();
     let rwlock_par_time = start.elapsed();
     println!("RwLockHashMapBackend + par_iter:   {:?}", rwlock_par_time);
@@ -113,20 +124,15 @@ fn main() {
     let mut all_match = true;
 
     for i in 0..NUM_SAMPLES {
-        let hashmap_val = hashmap_results[i];
-        let dashmap_val = dashmap_results[i];
-        let dashmap_par_val = dashmap_par_results[i];
-        let rwlock_val = rwlock_results[i];
-        let rwlock_par_val = rwlock_par_results[i];
-
-        if hashmap_val != dashmap_val
-            || hashmap_val != dashmap_par_val
-            || hashmap_val != rwlock_val
-            || hashmap_val != rwlock_par_val
+        if hashmap_results[i] != dashmap_results[i]
+            || hashmap_results[i] != dashmap_par_results[i]
+            || hashmap_results[i] != rwlock_results[i]
+            || hashmap_results[i] != rwlock_par_results[i]
         {
             println!(
                 "Mismatch at input {}: HashMap={}, DashMap={}, DashMap+par={}, RwLock={}, RwLock+par={}",
-                inputs[i], hashmap_val, dashmap_val, dashmap_par_val, rwlock_val, rwlock_par_val
+                inputs[i], hashmap_results[i], dashmap_results[i], dashmap_par_results[i],
+                rwlock_results[i], rwlock_par_results[i]
             );
             all_match = false;
         }

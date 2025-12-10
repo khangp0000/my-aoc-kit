@@ -41,24 +41,29 @@ use super::problem::DpProblem;
 ///     }
 /// }
 ///
-/// let cache = DpCache::with_problem(VecBackend::new(), Factorial);
+/// let cache = DpCache::builder()
+///     .backend(VecBackend::new())
+///     .problem(Factorial)
+///     .build();
 /// assert_eq!(cache.get(&5), 120);
 /// ```
 ///
-/// # Example (closure-based)
+/// # Example (closure-based with ClosureProblem)
 ///
 /// ```rust
-/// use aoc_solutions::utils::dp_cache::{DpCache, VecBackend};
+/// use aoc_solutions::utils::dp_cache::{DpCache, ClosureProblem, VecBackend};
 ///
-/// let cache = DpCache::new(
-///     VecBackend::new(),
-///     |n: &usize| if *n == 0 { vec![] } else { vec![n - 1] },
-///     |n: &usize, deps: Vec<u64>| {
-///         if *n == 0 { 1 } else { (*n as u64) * deps[0] }
-///     },
+/// let fib = ClosureProblem::new(
+///     |n: &usize| if *n <= 1 { vec![] } else { vec![n - 1, n - 2] },
+///     |n: &usize, deps: Vec<u64>| if *n <= 1 { *n as u64 } else { deps[0] + deps[1] },
 /// );
 ///
-/// assert_eq!(cache.get(&5), 120);
+/// let cache = DpCache::builder()
+///     .backend(VecBackend::new())
+///     .problem(fib)
+///     .build();
+///
+/// assert_eq!(cache.get(&10), 55);
 /// ```
 pub struct DpCache<I, K, B, P>
 where
@@ -77,18 +82,9 @@ where
     B: Backend<I, K>,
     P: DpProblem<I, K>,
 {
-    /// Creates a new DpCache with the given backend and problem definition.
-    ///
-    /// # Arguments
-    ///
-    /// - `backend`: The storage backend for cached values
-    /// - `problem`: A struct implementing `DpProblem` that defines deps and compute
-    pub fn with_problem(backend: B, problem: P) -> Self {
-        Self {
-            backend: RefCell::new(backend),
-            problem,
-            _phantom: PhantomData,
-        }
+    /// Creates a new builder for DpCache.
+    pub fn builder() -> DpCacheBuilder<I, K, B, P> {
+        DpCacheBuilder::new()
     }
 
     /// Retrieves the value for the given index, computing it if necessary.
@@ -126,63 +122,58 @@ where
     }
 }
 
-/// Wrapper to adapt closure functions to the DpProblem trait.
-pub struct ClosureProblem<I, K, D, C>
-where
-    D: Fn(&I) -> Vec<I>,
-    C: Fn(&I, Vec<K>) -> K,
-{
-    dep_fn: D,
-    compute_fn: C,
+// =============================================================================
+// Builder for DpCache
+// =============================================================================
+
+/// Builder for constructing a `DpCache`.
+pub struct DpCacheBuilder<I, K, B, P> {
+    backend: Option<B>,
+    problem: Option<P>,
     _phantom: PhantomData<(I, K)>,
 }
 
-impl<I, K, D, C> DpProblem<I, K> for ClosureProblem<I, K, D, C>
-where
-    D: Fn(&I) -> Vec<I>,
-    C: Fn(&I, Vec<K>) -> K,
-{
-    fn deps(&self, index: &I) -> Vec<I> {
-        (self.dep_fn)(index)
-    }
-
-    fn compute(&self, index: &I, deps: Vec<K>) -> K {
-        (self.compute_fn)(index, deps)
-    }
-}
-
-impl<I, K, B> DpCache<I, K, B, ClosureProblem<I, K, fn(&I) -> Vec<I>, fn(&I, Vec<K>) -> K>>
-where
-    I: Clone,
-    K: Clone,
-    B: Backend<I, K>,
-{
-    /// Creates a new DpCache with the given backend, dependency function, and compute function.
-    ///
-    /// This is a convenience constructor for the closure-based API.
-    ///
-    /// # Arguments
-    ///
-    /// - `backend`: The storage backend for cached values
-    /// - `dep_fn`: A function that returns the indices this index depends on
-    /// - `compute_fn`: A function that computes the value given the index and resolved dependency values
-    pub fn new<D, C>(
-        backend: B,
-        dep_fn: D,
-        compute_fn: C,
-    ) -> DpCache<I, K, B, ClosureProblem<I, K, D, C>>
-    where
-        D: Fn(&I) -> Vec<I>,
-        C: Fn(&I, Vec<K>) -> K,
-    {
-        DpCache {
-            backend: RefCell::new(backend),
-            problem: ClosureProblem {
-                dep_fn,
-                compute_fn,
-                _phantom: PhantomData,
-            },
+impl<I, K, B, P> DpCacheBuilder<I, K, B, P> {
+    fn new() -> Self {
+        Self {
+            backend: None,
+            problem: None,
             _phantom: PhantomData,
         }
     }
 }
+
+impl<I, K, B, P> DpCacheBuilder<I, K, B, P>
+where
+    I: Clone,
+    K: Clone,
+    B: Backend<I, K>,
+    P: DpProblem<I, K>,
+{
+    /// Sets the backend for the cache.
+    pub fn backend(mut self, backend: B) -> Self {
+        self.backend = Some(backend);
+        self
+    }
+
+    /// Sets the problem definition for the cache.
+    pub fn problem(mut self, problem: P) -> Self {
+        self.problem = Some(problem);
+        self
+    }
+
+    /// Builds the DpCache.
+    ///
+    /// # Panics
+    ///
+    /// Panics if backend or problem is not set.
+    pub fn build(self) -> DpCache<I, K, B, P> {
+        DpCache {
+            backend: RefCell::new(self.backend.expect("backend is required")),
+            problem: self.problem.expect("problem is required"),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+

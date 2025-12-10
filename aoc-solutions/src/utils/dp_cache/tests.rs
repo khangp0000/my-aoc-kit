@@ -5,65 +5,41 @@ use std::rc::Rc;
 
 use super::*;
 
-// =============================================================================
-// Collatz Chain Length Functions (test helpers)
-// =============================================================================
 
-/// Returns the dependencies for computing the Collatz chain length of n.
-fn collatz_deps(n: &u64) -> Vec<u64> {
-    if *n <= 1 {
-        vec![]
-    } else if n % 2 == 0 {
-        vec![n / 2]
-    } else {
-        vec![3 * n + 1]
-    }
-}
-
-/// Computes the Collatz chain length given the index and resolved dependencies.
-fn collatz_compute(_n: &u64, deps: Vec<u64>) -> u64 {
-    if deps.is_empty() {
-        0
-    } else {
-        1 + deps[0]
-    }
-}
 
 #[test]
 fn test_basic_cache_creation_and_single_value() {
     // Create cache with no dependencies, verify get returns computed value
-    let cache = DpCache::new(
-        VecBackend::new(),
-        |_: &usize| vec![],
-        |n: &usize, _deps: Vec<i32>| (*n as i32) * 2,
-    );
+    let cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(NoDeps)
+        .build();
 
     assert_eq!(cache.get(&5), 10);
     assert_eq!(cache.get(&0), 0);
     assert_eq!(cache.get(&100), 200);
 }
 
+/// Simple problem with no dependencies for testing
+struct NoDeps;
+
+impl DpProblem<usize, i32> for NoDeps {
+    fn deps(&self, _n: &usize) -> Vec<usize> {
+        vec![]
+    }
+
+    fn compute(&self, n: &usize, _deps: Vec<i32>) -> i32 {
+        (*n as i32) * 2
+    }
+}
 
 #[test]
 fn test_fibonacci_linear_dependency_chain() {
     // fib(n) depends on fib(n-1), fib(n-2)
-    let cache = DpCache::new(
-        VecBackend::new(),
-        |n: &usize| {
-            if *n <= 1 {
-                vec![]
-            } else {
-                vec![n - 1, n - 2]
-            }
-        },
-        |n: &usize, deps: Vec<u64>| {
-            if *n <= 1 {
-                *n as u64
-            } else {
-                deps[0] + deps[1]
-            }
-        },
-    );
+    let cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Fibonacci)
+        .build();
 
     assert_eq!(cache.get(&0), 0);
     assert_eq!(cache.get(&1), 1);
@@ -75,24 +51,29 @@ fn test_fibonacci_linear_dependency_chain() {
     assert_eq!(cache.get(&20), 6765);
 }
 
-
 #[test]
 fn test_diamond_dependency_memoization() {
     // Diamond pattern: A(0) depends on B(1) and C(2), both depend on D(3)
     // Verify D is computed only once
     let compute_count = Rc::new(Cell::new(0));
-    let count_clone = compute_count.clone();
 
-    let cache = DpCache::new(
-        VecBackend::new(),
-        |n: &usize| match *n {
-            0 => vec![1, 2], // A depends on B, C
-            1 => vec![3],    // B depends on D
-            2 => vec![3],    // C depends on D
-            _ => vec![],     // D has no deps
-        },
-        move |n: &usize, deps: Vec<i32>| {
-            count_clone.set(count_clone.get() + 1);
+    /// Diamond problem for testing memoization
+    struct Diamond {
+        count: Rc<Cell<i32>>,
+    }
+
+    impl DpProblem<usize, i32> for Diamond {
+        fn deps(&self, n: &usize) -> Vec<usize> {
+            match *n {
+                0 => vec![1, 2], // A depends on B, C
+                1 => vec![3],    // B depends on D
+                2 => vec![3],    // C depends on D
+                _ => vec![],     // D has no deps
+            }
+        }
+
+        fn compute(&self, n: &usize, deps: Vec<i32>) -> i32 {
+            self.count.set(self.count.get() + 1);
             match *n {
                 0 => deps[0] + deps[1], // A = B + C
                 1 => deps[0] * 2,       // B = D * 2
@@ -100,8 +81,13 @@ fn test_diamond_dependency_memoization() {
                 3 => 10,                // D = 10
                 _ => 0,
             }
-        },
-    );
+        }
+    }
+
+    let cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Diamond { count: compute_count.clone() })
+        .build();
 
     let result = cache.get(&0);
     // D=10, B=20, C=30, A=50
@@ -113,7 +99,6 @@ fn test_diamond_dependency_memoization() {
     let _ = cache.get(&0);
     assert_eq!(compute_count.get(), 4);
 }
-
 
 #[test]
 fn test_vec_backend_get_or_insert() {
@@ -138,7 +123,6 @@ fn test_vec_backend_get_or_insert() {
     assert_eq!(*value, 100);
     assert_eq!(backend.get(&5), Some(&42));
 }
-
 
 #[test]
 fn test_hashmap_backend_get_or_insert() {
@@ -167,23 +151,31 @@ fn test_hashmap_backend_get_or_insert() {
 #[test]
 fn test_hashmap_backend_with_cache() {
     // Test HashMapBackend with DpCache using string keys
-    let cache = DpCache::new(
-        HashMapBackend::new(),
-        |s: &String| {
+    /// String length problem for testing HashMap backend
+    struct StringLength;
+
+    impl DpProblem<String, usize> for StringLength {
+        fn deps(&self, s: &String) -> Vec<String> {
             if s.is_empty() {
                 vec![]
             } else {
                 vec![s[..s.len() - 1].to_string()]
             }
-        },
-        |s: &String, deps: Vec<usize>| {
+        }
+
+        fn compute(&self, s: &String, deps: Vec<usize>) -> usize {
             if s.is_empty() {
                 0
             } else {
                 deps[0] + 1
             }
-        },
-    );
+        }
+    }
+
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(StringLength)
+        .build();
 
     assert_eq!(cache.get(&"".to_string()), 0);
     assert_eq!(cache.get(&"a".to_string()), 1);
@@ -194,13 +186,19 @@ fn test_hashmap_backend_with_cache() {
 #[test]
 fn test_collatz_base_case() {
     // n=1 should have chain length 0
-    let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
     assert_eq!(cache.get(&1u64), 0);
 }
 
 #[test]
 fn test_collatz_even_numbers() {
-    let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
     // 2 -> 1 (length 1)
     assert_eq!(cache.get(&2u64), 1);
     // 4 -> 2 -> 1 (length 2)
@@ -211,7 +209,10 @@ fn test_collatz_even_numbers() {
 
 #[test]
 fn test_collatz_odd_numbers() {
-    let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
     // 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 7)
     assert_eq!(cache.get(&3u64), 7);
     // 5 -> 16 -> 8 -> 4 -> 2 -> 1 (length 5)
@@ -220,40 +221,46 @@ fn test_collatz_odd_numbers() {
 
 #[test]
 fn test_collatz_known_values() {
-    let cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
     // Known Collatz chain lengths
-    assert_eq!(cache.get(&6u64), 8);   // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
-    assert_eq!(cache.get(&7u64), 16);  // 7 has a longer chain
+    assert_eq!(cache.get(&6u64), 8); // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1
+    assert_eq!(cache.get(&7u64), 16); // 7 has a longer chain
     assert_eq!(cache.get(&27u64), 111); // 27 is famous for its long chain
 }
 
 #[test]
 fn test_parallel_collatz_matches_sequential() {
     // Verify parallel cache produces same results as sequential
-    let seq_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
-    let par_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
+    let seq_cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
+    let par_cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     for n in 1..=100u64 {
-        assert_eq!(
-            seq_cache.get(&n),
-            par_cache.get(&n),
-            "Mismatch at n={}",
-            n
-        );
+        assert_eq!(seq_cache.get(&n), par_cache.get(&n), "Mismatch at n={}", n);
     }
 }
 
 #[test]
 fn test_dashmap_collatz() {
     // Test DashMapDpCache
-    let par_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
+    let par_cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     assert_eq!(par_cache.get(&1u64), 0);
     assert_eq!(par_cache.get(&2u64), 1);
     assert_eq!(par_cache.get(&3u64), 7);
     assert_eq!(par_cache.get(&27u64), 111);
 }
-
 
 // =============================================================================
 // Trait-based API tests
@@ -282,7 +289,10 @@ impl DpProblem<usize, u64> for Fibonacci {
 
 #[test]
 fn test_trait_based_fibonacci() {
-    let cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
+    let cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Fibonacci)
+        .build();
 
     assert_eq!(cache.get(&0), 0);
     assert_eq!(cache.get(&1), 1);
@@ -316,7 +326,10 @@ impl DpProblem<u64, u64> for Collatz {
 
 #[test]
 fn test_trait_based_collatz_sequential() {
-    let cache = DpCache::with_problem(HashMapBackend::new(), Collatz);
+    let cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     assert_eq!(cache.get(&1), 0);
     assert_eq!(cache.get(&2), 1);
@@ -326,7 +339,10 @@ fn test_trait_based_collatz_sequential() {
 
 #[test]
 fn test_trait_based_collatz_parallel() {
-    let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
+    let cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     assert_eq!(cache.get(&1), 0);
     assert_eq!(cache.get(&2), 1);
@@ -357,7 +373,10 @@ impl DpProblem<usize, u64> for Factorial {
 
 #[test]
 fn test_trait_based_factorial() {
-    let cache = DpCache::with_problem(VecBackend::new(), Factorial);
+    let cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Factorial)
+        .build();
 
     assert_eq!(cache.get(&0), 1);
     assert_eq!(cache.get(&1), 1);
@@ -368,27 +387,23 @@ fn test_trait_based_factorial() {
 #[test]
 fn test_trait_based_matches_closure_based() {
     // Verify trait-based and closure-based produce same results
-    let trait_cache = DpCache::with_problem(VecBackend::new(), Fibonacci);
-    let closure_cache = DpCache::new(
-        VecBackend::new(),
-        |n: &usize| {
-            if *n <= 1 {
-                vec![]
-            } else {
-                vec![n - 1, n - 2]
-            }
-        },
-        |n: &usize, deps: Vec<u64>| {
-            if *n <= 1 {
-                *n as u64
-            } else {
-                deps[0] + deps[1]
-            }
-        },
-    );
+    // Both use the Fibonacci problem
+    let trait_cache = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Fibonacci)
+        .build();
+    let trait_cache2 = DpCache::builder()
+        .backend(VecBackend::new())
+        .problem(Fibonacci)
+        .build();
 
     for n in 0..=20 {
-        assert_eq!(trait_cache.get(&n), closure_cache.get(&n), "Mismatch at n={}", n);
+        assert_eq!(
+            trait_cache.get(&n),
+            trait_cache2.get(&n),
+            "Mismatch at n={}",
+            n
+        );
     }
 }
 
@@ -399,8 +414,10 @@ fn test_trait_based_matches_closure_based() {
 #[test]
 fn test_rwlock_collatz() {
     // Test RwLockDpCache
-    let par_cache =
-        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+    let par_cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     assert_eq!(par_cache.get(&1u64), 0);
     assert_eq!(par_cache.get(&2u64), 1);
@@ -411,23 +428,26 @@ fn test_rwlock_collatz() {
 #[test]
 fn test_rwlock_collatz_matches_sequential() {
     // Verify RwLock parallel cache produces same results as sequential
-    let seq_cache = DpCache::new(HashMapBackend::new(), collatz_deps, collatz_compute);
-    let par_cache =
-        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+    let seq_cache = DpCache::builder()
+        .backend(HashMapBackend::new())
+        .problem(Collatz)
+        .build();
+    let par_cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     for n in 1..=100u64 {
-        assert_eq!(
-            seq_cache.get(&n),
-            par_cache.get(&n),
-            "Mismatch at n={}",
-            n
-        );
+        assert_eq!(seq_cache.get(&n), par_cache.get(&n), "Mismatch at n={}", n);
     }
 }
 
 #[test]
 fn test_trait_based_collatz_rwlock() {
-    let cache = ParallelDpCache::with_problem(RwLockHashMapBackend::new(), Collatz);
+    let cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     assert_eq!(cache.get(&1), 0);
     assert_eq!(cache.get(&2), 1);
@@ -490,9 +510,14 @@ fn test_rwlock_backend_get_or_insert() {
 #[test]
 fn test_all_parallel_backends_match() {
     // Verify all parallel backends produce same results
-    let dashmap_cache = ParallelDpCache::new(DashMapBackend::new(), collatz_deps, collatz_compute);
-    let rwlock_cache =
-        ParallelDpCache::new(RwLockHashMapBackend::new(), collatz_deps, collatz_compute);
+    let dashmap_cache = ParallelDpCache::builder()
+        .backend(DashMapBackend::new())
+        .problem(Collatz)
+        .build();
+    let rwlock_cache = ParallelDpCache::builder()
+        .backend(RwLockHashMapBackend::new())
+        .problem(Collatz)
+        .build();
 
     for n in 1..=100u64 {
         assert_eq!(

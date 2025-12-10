@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use rayon::ThreadPool;
 
-use super::backend::{DashMapBackend, ParallelBackend, RwLockHashMapBackend};
+use super::backend::ParallelBackend;
 use super::problem::ParallelDpProblem;
 
 /// A parallel dynamic programming cache with pluggable backend storage.
@@ -46,7 +46,10 @@ use super::problem::ParallelDpProblem;
 ///     }
 /// }
 ///
-/// let cache = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
+/// let cache = ParallelDpCache::builder()
+///     .backend(DashMapBackend::new())
+///     .problem(Collatz)
+///     .build();
 /// assert_eq!(cache.get(&27), 111);
 /// ```
 pub struct ParallelDpCache<I, K, B, P>
@@ -69,24 +72,9 @@ where
     B: ParallelBackend<I, K>,
     P: ParallelDpProblem<I, K>,
 {
-    /// Creates a new ParallelDpCache with the given backend and problem definition.
-    pub fn with_problem(backend: B, problem: P) -> Self {
-        Self {
-            backend,
-            problem,
-            pool: None,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Creates a new ParallelDpCache with a custom Rayon thread pool.
-    pub fn with_problem_and_pool(backend: B, problem: P, pool: Arc<ThreadPool>) -> Self {
-        Self {
-            backend,
-            problem,
-            pool: Some(pool),
-            _phantom: PhantomData,
-        }
+    /// Creates a new builder for ParallelDpCache.
+    pub fn builder() -> ParallelDpCacheBuilder<I, K, B, P> {
+        ParallelDpCacheBuilder::new()
     }
 
     /// Retrieves the value for the given index, computing it if necessary.
@@ -122,121 +110,66 @@ where
     }
 }
 
-/// Wrapper to adapt closure functions to the ParallelDpProblem trait.
-pub struct ParallelClosureProblem<I, K, D, C>
-where
-    D: Fn(&I) -> Vec<I> + Send + Sync,
-    C: Fn(&I, Vec<K>) -> K + Send + Sync,
-{
-    dep_fn: D,
-    compute_fn: C,
+// =============================================================================
+// Builder for ParallelDpCache
+// =============================================================================
+
+/// Builder for constructing a `ParallelDpCache`.
+pub struct ParallelDpCacheBuilder<I, K, B, P> {
+    backend: Option<B>,
+    problem: Option<P>,
+    pool: Option<Arc<ThreadPool>>,
     _phantom: PhantomData<(I, K)>,
 }
 
-impl<I, K, D, C> super::problem::DpProblem<I, K> for ParallelClosureProblem<I, K, D, C>
-where
-    D: Fn(&I) -> Vec<I> + Send + Sync,
-    C: Fn(&I, Vec<K>) -> K + Send + Sync,
-{
-    fn deps(&self, index: &I) -> Vec<I> {
-        (self.dep_fn)(index)
-    }
-
-    fn compute(&self, index: &I, deps: Vec<K>) -> K {
-        (self.compute_fn)(index, deps)
-    }
-}
-
-// Dummy type for the default generic parameter
-type DummyParallelProblem<I, K> =
-    ParallelClosureProblem<I, K, fn(&I) -> Vec<I>, fn(&I, Vec<K>) -> K>;
-
-impl<I, K, B> ParallelDpCache<I, K, B, DummyParallelProblem<I, K>>
-where
-    I: Hash + Eq + Clone + Send + Sync,
-    K: Clone + Send + Sync,
-    B: ParallelBackend<I, K>,
-{
-    /// Creates a new ParallelDpCache with closure-based dependency and compute functions.
-    ///
-    /// This is a convenience constructor for the closure-based API.
-    pub fn new<D, C>(
-        backend: B,
-        dep_fn: D,
-        compute_fn: C,
-    ) -> ParallelDpCache<I, K, B, ParallelClosureProblem<I, K, D, C>>
-    where
-        D: Fn(&I) -> Vec<I> + Send + Sync,
-        C: Fn(&I, Vec<K>) -> K + Send + Sync,
-    {
-        ParallelDpCache {
-            backend,
-            problem: ParallelClosureProblem {
-                dep_fn,
-                compute_fn,
-                _phantom: PhantomData,
-            },
+impl<I, K, B, P> ParallelDpCacheBuilder<I, K, B, P> {
+    fn new() -> Self {
+        Self {
+            backend: None,
+            problem: None,
             pool: None,
             _phantom: PhantomData,
         }
     }
+}
 
-    /// Creates a new ParallelDpCache with closure-based functions and a custom thread pool.
-    pub fn with_pool<D, C>(
-        backend: B,
-        dep_fn: D,
-        compute_fn: C,
-        pool: Arc<ThreadPool>,
-    ) -> ParallelDpCache<I, K, B, ParallelClosureProblem<I, K, D, C>>
-    where
-        D: Fn(&I) -> Vec<I> + Send + Sync,
-        C: Fn(&I, Vec<K>) -> K + Send + Sync,
-    {
+impl<I, K, B, P> ParallelDpCacheBuilder<I, K, B, P>
+where
+    I: Hash + Eq + Clone + Send + Sync,
+    K: Clone + Send + Sync,
+    B: ParallelBackend<I, K>,
+    P: ParallelDpProblem<I, K>,
+{
+    /// Sets the backend for the cache.
+    pub fn backend(mut self, backend: B) -> Self {
+        self.backend = Some(backend);
+        self
+    }
+
+    /// Sets the problem definition for the cache.
+    pub fn problem(mut self, problem: P) -> Self {
+        self.problem = Some(problem);
+        self
+    }
+
+    /// Sets a custom Rayon thread pool for parallel execution.
+    pub fn pool(mut self, pool: Arc<ThreadPool>) -> Self {
+        self.pool = Some(pool);
+        self
+    }
+
+    /// Builds the ParallelDpCache.
+    ///
+    /// # Panics
+    ///
+    /// Panics if backend or problem is not set.
+    pub fn build(self) -> ParallelDpCache<I, K, B, P> {
         ParallelDpCache {
-            backend,
-            problem: ParallelClosureProblem {
-                dep_fn,
-                compute_fn,
-                _phantom: PhantomData,
-            },
-            pool: Some(pool),
+            backend: self.backend.expect("backend is required"),
+            problem: self.problem.expect("problem is required"),
+            pool: self.pool,
             _phantom: PhantomData,
         }
     }
 }
 
-// =============================================================================
-// Type Aliases for Convenience
-// =============================================================================
-
-/// A parallel DP cache using DashMap as the backend.
-///
-/// This is a convenience type alias for the common case of using DashMap.
-///
-/// # Example
-///
-/// ```rust
-/// use aoc_solutions::utils::dp_cache::{DashMapDpCache, DashMapBackend, DpProblem, ParallelDpCache};
-///
-/// struct Collatz;
-///
-/// impl DpProblem<u64, u64> for Collatz {
-///     fn deps(&self, n: &u64) -> Vec<u64> {
-///         if *n <= 1 { vec![] }
-///         else if n % 2 == 0 { vec![n / 2] }
-///         else { vec![3 * n + 1] }
-///     }
-///     fn compute(&self, _n: &u64, deps: Vec<u64>) -> u64 {
-///         if deps.is_empty() { 0 } else { 1 + deps[0] }
-///     }
-/// }
-///
-/// let cache: DashMapDpCache<_, _, _> = ParallelDpCache::with_problem(DashMapBackend::new(), Collatz);
-/// assert_eq!(cache.get(&27), 111);
-/// ```
-pub type DashMapDpCache<I, K, P> = ParallelDpCache<I, K, DashMapBackend<I, K>, P>;
-
-/// A parallel DP cache using RwLock<HashMap> as the backend.
-///
-/// This is a convenience type alias for using RwLock<HashMap>.
-pub type RwLockDpCache<I, K, P> = ParallelDpCache<I, K, RwLockHashMapBackend<I, K>, P>;
