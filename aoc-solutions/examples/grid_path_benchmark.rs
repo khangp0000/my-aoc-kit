@@ -100,6 +100,48 @@ const NUM_GRIDS: usize = 100;
 const SMALL_GRID_SIZE: usize = 15;
 const NUM_SMALL_GRIDS: usize = 10;
 
+/// Bottom-up DP using a local 2D array (no DpCache struct)
+fn min_path_sum_bottom_up<const R: usize, const C: usize>(grid: &[Vec<u32>]) -> u32 {
+    let mut dp = [[0u32; C]; R];
+    for row in 0..R {
+        for col in 0..C {
+            let cell = grid[row][col];
+            dp[row][col] = if row == 0 && col == 0 {
+                cell
+            } else if row == 0 {
+                cell + dp[row][col - 1]
+            } else if col == 0 {
+                cell + dp[row - 1][col]
+            } else {
+                cell + dp[row - 1][col].min(dp[row][col - 1])
+            };
+        }
+    }
+    dp[R - 1][C - 1]
+}
+
+/// Bottom-up DP using a Vec (dynamic size, no DpCache struct)
+fn min_path_sum_bottom_up_vec(grid: &[Vec<u32>]) -> u32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut dp = vec![vec![0u32; cols]; rows];
+    for row in 0..rows {
+        for col in 0..cols {
+            let cell = grid[row][col];
+            dp[row][col] = if row == 0 && col == 0 {
+                cell
+            } else if row == 0 {
+                cell + dp[row][col - 1]
+            } else if col == 0 {
+                cell + dp[row - 1][col]
+            } else {
+                cell + dp[row - 1][col].min(dp[row][col - 1])
+            };
+        }
+    }
+    dp[rows - 1][cols - 1]
+}
+
 fn main() {
     println!("Minimum Path Sum Benchmark (2D DP)");
     println!("===================================\n");
@@ -119,9 +161,54 @@ fn main() {
     }
 
     // =========================================================================
-    // Big grids (50x50) - Single-threaded
+    // Local array cache (manual DP - no DpCache struct)
     // =========================================================================
-    println!("\n=== Big grids ({}x{}, {} grids) - Single-threaded ===", GRID_SIZE, GRID_SIZE, NUM_GRIDS);
+    println!("\n=== Local array cache (manual DP) ===");
+
+    // Bottom-up DP with local 2D array
+    println!("Running bottom-up DP (local 2D array)...");
+    let start = Instant::now();
+    let bottom_up_results: Vec<u32> = grids
+        .iter()
+        .map(|grid| min_path_sum_bottom_up::<GRID_SIZE, GRID_SIZE>(grid))
+        .collect();
+    let bottom_up_time = start.elapsed();
+    println!("Bottom-up (local array):     {:?}", bottom_up_time);
+
+    // Bottom-up DP with Vec
+    println!("Running bottom-up DP (Vec)...");
+    let start = Instant::now();
+    let bottom_up_vec_results: Vec<u32> = grids
+        .iter()
+        .map(|grid| min_path_sum_bottom_up_vec(grid))
+        .collect();
+    let bottom_up_vec_time = start.elapsed();
+    println!("Bottom-up (Vec):             {:?}", bottom_up_vec_time);
+
+    // Bottom-up + par_iter (local array)
+    println!("Running bottom-up + par_iter (local array)...");
+    let start = Instant::now();
+    let bottom_up_par_results: Vec<u32> = grids
+        .par_iter()
+        .map(|grid| min_path_sum_bottom_up::<GRID_SIZE, GRID_SIZE>(grid))
+        .collect();
+    let bottom_up_par_time = start.elapsed();
+    println!("Bottom-up + par_iter:        {:?}", bottom_up_par_time);
+
+    // Bottom-up + par_iter (Vec)
+    println!("Running bottom-up Vec + par_iter...");
+    let start = Instant::now();
+    let bottom_up_vec_par_results: Vec<u32> = grids
+        .par_iter()
+        .map(|grid| min_path_sum_bottom_up_vec(grid))
+        .collect();
+    let bottom_up_vec_par_time = start.elapsed();
+    println!("Bottom-up Vec + par_iter:    {:?}", bottom_up_vec_par_time);
+
+    // =========================================================================
+    // Big grids (50x50) - DpCache struct
+    // =========================================================================
+    println!("\n=== Big grids ({}x{}, {} grids) - DpCache struct ===", GRID_SIZE, GRID_SIZE, NUM_GRIDS);
 
     // Array2DBackend with DpCache (sequential) - zero allocation
     println!("Running Array2DBackend (sequential, zero-alloc)...");
@@ -362,8 +449,12 @@ fn main() {
     let mut all_match = true;
     let mut mismatches = 0;
     for i in 0..NUM_GRIDS {
-        let expected = array2d_results[i];
-        if expected != vec2d_results[i]
+        let expected = bottom_up_results[i]; // Use bottom-up as ground truth
+        if expected != bottom_up_vec_results[i]
+            || expected != bottom_up_par_results[i]
+            || expected != bottom_up_vec_par_results[i]
+            || expected != array2d_results[i]
+            || expected != vec2d_results[i]
             || expected != hashmap_results[i]
             || expected != par_array2d_results[i]
             || expected != dashmap_results[i]
@@ -374,8 +465,8 @@ fn main() {
         {
             if mismatches < 5 {
                 println!(
-                    "Mismatch at grid {}: Array2D={}, Vec2D={}, HashMap={}",
-                    i, expected, vec2d_results[i], hashmap_results[i]
+                    "Mismatch at grid {}: bottom_up={}, Array2D={}, Vec2D={}",
+                    i, expected, array2d_results[i], vec2d_results[i]
                 );
             }
             all_match = false;
@@ -427,7 +518,13 @@ fn main() {
     // =========================================================================
     println!("\n=== Performance Summary ===");
 
-    println!("\nBig grids ({}x{}) - Single-threaded:", GRID_SIZE, GRID_SIZE);
+    println!("\nLocal array cache (manual DP):");
+    println!("  Bottom-up (local array):    {:?}", bottom_up_time);
+    println!("  Bottom-up (Vec):            {:?}", bottom_up_vec_time);
+    println!("  Bottom-up + par_iter:       {:?}", bottom_up_par_time);
+    println!("  Bottom-up Vec + par_iter:   {:?}", bottom_up_vec_par_time);
+
+    println!("\nBig grids ({}x{}) - DpCache struct:", GRID_SIZE, GRID_SIZE);
     println!("  Array2DBackend:             {:?}", array2d_time);
     println!("  Vec2DBackend:               {:?}", vec2d_time);
     println!("  HashMapBackend:             {:?}", hashmap_time);
@@ -454,6 +551,16 @@ fn main() {
         .min(par_array2d_time)
         .min(par_array2d_par_time);
 
+    println!("\nLocal array vs DpCache struct:");
+    println!(
+        "  Bottom-up vs Array2DBackend: {:.2}x faster",
+        array2d_time.as_secs_f64() / bottom_up_time.as_secs_f64()
+    );
+    println!(
+        "  Bottom-up Vec vs Vec2DBackend: {:.2}x faster",
+        vec2d_time.as_secs_f64() / bottom_up_vec_time.as_secs_f64()
+    );
+
     println!("\nBackend comparison:");
     println!(
         "  Array2DBackend vs Vec2DBackend: {:.2}x",
@@ -463,7 +570,7 @@ fn main() {
         "  Array2DBackend vs HashMapBackend: {:.2}x",
         hashmap_time.as_secs_f64() / array2d_time.as_secs_f64()
     );
-    println!("  Best 2D backend time: {:?}", best_2d);
+    println!("  Best DpCache time: {:?}", best_2d);
 
     println!("\nWrapper overhead (small grids):");
     println!(
@@ -474,4 +581,14 @@ fn main() {
         "  ParallelNoCacheBackend vs direct: {:.2}x",
         par_nocache_backend_time.as_secs_f64() / no_cache_time.as_secs_f64()
     );
+
+    println!("\n=== Conclusion ===");
+    println!(
+        "For 2D grid DP, local bottom-up is {:.1}x faster than DpCache Array2DBackend.",
+        array2d_time.as_secs_f64() / bottom_up_time.as_secs_f64()
+    );
+    println!("DpCache is useful when:");
+    println!("  - Problem has complex/irregular dependencies");
+    println!("  - You need the abstraction for code reuse");
+    println!("  - Manual DP implementation is error-prone");
 }
