@@ -73,6 +73,44 @@ fn fib_iterative(n: usize) -> u128 {
 }
 
 const MAX_N: usize = 186; // Max n before u128 overflow
+
+/// Memoized recursive computation using a local array cache (manual DP)
+fn fib_memoized_array(n: usize) -> u128 {
+    let mut cache: [Option<u128>; MAX_N] = [None; MAX_N];
+    fib_memoized_helper(n, &mut cache)
+}
+
+fn fib_memoized_helper(n: usize, cache: &mut [Option<u128>; MAX_N]) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    if n == 1 {
+        return 1;
+    }
+    if let Some(val) = cache[n] {
+        return val;
+    }
+    let result = fib_memoized_helper(n - 1, cache) + fib_memoized_helper(n - 2, cache);
+    cache[n] = Some(result);
+    result
+}
+
+/// Bottom-up DP using a local array (no recursion)
+fn fib_bottom_up_array(n: usize) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    if n == 1 {
+        return 1;
+    }
+    let mut dp: [u128; MAX_N] = [0; MAX_N];
+    dp[0] = 0;
+    dp[1] = 1;
+    for i in 2..=n {
+        dp[i] = dp[i - 1] + dp[i - 2];
+    }
+    dp[n]
+}
 const NUM_QUERIES: usize = 1000;
 
 fn main() {
@@ -106,9 +144,48 @@ fn main() {
     println!("Iterative + par_iter:        {:?}", iterative_par_time);
 
     // =========================================================================
-    // Single-threaded benchmarks
+    // Local array cache (manual DP - no DpCache struct)
     // =========================================================================
-    println!("\n=== Single-threaded ===");
+    println!("\n=== Local array cache (manual DP) ===");
+
+    // Memoized recursive with local array
+    println!("Running memoized recursive (local array)...");
+    let start = Instant::now();
+    let memoized_results: Vec<u128> = test_cases.iter().map(|&n| fib_memoized_array(n)).collect();
+    let memoized_time = start.elapsed();
+    println!("Memoized recursive:          {:?}", memoized_time);
+
+    // Bottom-up DP with local array
+    println!("Running bottom-up DP (local array)...");
+    let start = Instant::now();
+    let bottom_up_results: Vec<u128> = test_cases.iter().map(|&n| fib_bottom_up_array(n)).collect();
+    let bottom_up_time = start.elapsed();
+    println!("Bottom-up DP:                {:?}", bottom_up_time);
+
+    // Memoized + par_iter
+    println!("Running memoized + par_iter...");
+    let start = Instant::now();
+    let memoized_par_results: Vec<u128> = test_cases
+        .par_iter()
+        .map(|&n| fib_memoized_array(n))
+        .collect();
+    let memoized_par_time = start.elapsed();
+    println!("Memoized + par_iter:         {:?}", memoized_par_time);
+
+    // Bottom-up + par_iter
+    println!("Running bottom-up + par_iter...");
+    let start = Instant::now();
+    let bottom_up_par_results: Vec<u128> = test_cases
+        .par_iter()
+        .map(|&n| fib_bottom_up_array(n))
+        .collect();
+    let bottom_up_par_time = start.elapsed();
+    println!("Bottom-up + par_iter:        {:?}", bottom_up_par_time);
+
+    // =========================================================================
+    // Single-threaded benchmarks (DpCache struct)
+    // =========================================================================
+    println!("\n=== Single-threaded (DpCache struct) ===");
 
     // No cache - direct computation (baseline) - only for small n
     println!("Running no cache (direct recursive) on small n...");
@@ -363,6 +440,10 @@ fn main() {
         let expected = fib_iterative(n);
         if iterative_results[idx] != expected
             || iterative_par_results[idx] != expected
+            || memoized_results[idx] != expected
+            || bottom_up_results[idx] != expected
+            || memoized_par_results[idx] != expected
+            || bottom_up_par_results[idx] != expected
             || array_results[idx] != expected
             || vec_results[idx] != expected
             || hashmap_results[idx] != expected
@@ -405,7 +486,13 @@ fn main() {
     println!("  Iterative (sequential):     {:?}", iterative_time);
     println!("  Iterative + par_iter:       {:?}", iterative_par_time);
 
-    println!("\nFull range (n: 0-{}) - Single-threaded:", MAX_N - 1);
+    println!("\nLocal array cache (manual DP):");
+    println!("  Memoized recursive:         {:?}", memoized_time);
+    println!("  Bottom-up DP:               {:?}", bottom_up_time);
+    println!("  Memoized + par_iter:        {:?}", memoized_par_time);
+    println!("  Bottom-up + par_iter:       {:?}", bottom_up_par_time);
+
+    println!("\nFull range (n: 0-{}) - DpCache struct:", MAX_N - 1);
     println!("  ArrayBackend:               {:?}", array_time);
     println!("  VecBackend:                 {:?}", vec_time);
     println!("  HashMapBackend:             {:?}", hashmap_time);
@@ -449,10 +536,28 @@ fn main() {
     );
     println!("  Best cached time: {:?}", best_cached);
 
+    println!("\nLocal array vs DpCache struct:");
+    println!(
+        "  Memoized vs ArrayBackend: {:.2}x",
+        array_time.as_secs_f64() / memoized_time.as_secs_f64()
+    );
+    println!(
+        "  Bottom-up vs ArrayBackend: {:.2}x",
+        array_time.as_secs_f64() / bottom_up_time.as_secs_f64()
+    );
+
     println!("\nIterative vs DP Cache:");
     println!(
         "  ArrayBackend vs Iterative: {:.2}x slower",
         array_time.as_secs_f64() / iterative_time.as_secs_f64()
+    );
+    println!(
+        "  Memoized vs Iterative: {:.2}x slower",
+        memoized_time.as_secs_f64() / iterative_time.as_secs_f64()
+    );
+    println!(
+        "  Bottom-up vs Iterative: {:.2}x slower",
+        bottom_up_time.as_secs_f64() / iterative_time.as_secs_f64()
     );
     println!(
         "  Best cached vs Iterative: {:.2}x slower",
