@@ -62,6 +62,18 @@ This document summarizes benchmark results and provides guidance on when and how
 
 **Key insight:** For Collatz, caching provides no benefit because each query has unique subproblems. Direct computation with parallelization wins.
 
+### LCS - Longest Common Subsequence (2D DP, 100 pairs of 99-char strings)
+
+| Implementation | Time | vs Manual |
+|----------------|------|-----------|
+| Bottom-up local array | 1.16ms | 1x |
+| Bottom-up Vec | 1.82ms | 1.6x slower |
+| DpCache Array2DBackend | 38.3ms | 33x slower |
+| DpCache Vec2DBackend | 49.1ms | 42x slower |
+| DpCache + par_iter (best) | 18.7ms | 16x slower |
+
+**Key insight:** LCS has regular 2D dependencies, making manual DP straightforward. DpCache adds 33x overhead.
+
 ### Pattern (Simple computation, 1100 queries)
 
 | Implementation | Time | Notes |
@@ -119,6 +131,7 @@ Iterative → Bottom-up → Memoized  →  Sequential → Parallel
 # Run all benchmarks
 cargo run --example fibonacci_benchmark --release
 cargo run --example grid_path_benchmark --release
+cargo run --example lcs_benchmark --release
 cargo run --example collatz_benchmark --release
 cargo run --example pattern_benchmark --release
 ```
