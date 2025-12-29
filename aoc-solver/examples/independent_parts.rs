@@ -67,14 +67,16 @@ fn main() {
         .expect("Failed to create solver");
 
     match solver.solve(1) {
-        Ok(answer) => println!("Part 1 (Sum): {}", answer),
+        Ok(result) => println!("Part 1 (Sum): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error solving part 1: {}", e),
     }
 
     match solver.solve(2) {
-        Ok(answer) => println!("Part 2 (Product): {}", answer),
+        Ok(result) => println!("Part 2 (Product): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error solving part 2: {}", e),
     }
+
+    println!("\nParse took {:?}", solver.parse_duration());
 }
 
 #[cfg(test)]

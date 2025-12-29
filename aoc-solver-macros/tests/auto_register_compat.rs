@@ -52,10 +52,9 @@ fn test_solver_can_be_registered_manually() {
     let mut builder = SolverRegistryBuilder::new();
     builder
         .register(2023, 15, 2, |input: &str| {
-            let shared = <TestSolver1 as AocParser>::parse(input)?;
             Ok(Box::new(aoc_solver::SolverInstance::<TestSolver1>::new(
-                2023, 15, shared,
-            )))
+                2023, 15, input,
+            )?))
         })
         .expect("Failed to register solver");
     let registry = builder.build();
@@ -65,11 +64,11 @@ fn test_solver_can_be_registered_manually() {
         .create_solver(2023, 15, input)
         .expect("Failed to create solver");
 
-    let answer1 = solver.solve(1).expect("Failed to solve part 1");
-    assert_eq!(answer1, "9");
+    let result1 = solver.solve(1).expect("Failed to solve part 1");
+    assert_eq!(result1.answer, "9");
 
-    let answer2 = solver.solve(2).expect("Failed to solve part 2");
-    assert_eq!(answer2, "24");
+    let result2 = solver.solve(2).expect("Failed to solve part 2");
+    assert_eq!(result2.answer, "24");
 }
 
 // Test combining both macros: AutoRegisterSolver + AocSolver
@@ -129,9 +128,9 @@ fn test_combined_solver_auto_registers() {
         .create_solver(2023, 20, input)
         .expect("Failed to create solver - was it registered?");
 
-    let answer1 = solver.solve(1).expect("Failed to solve part 1");
-    assert_eq!(answer1, "18");
+    let result1 = solver.solve(1).expect("Failed to solve part 1");
+    assert_eq!(result1.answer, "18");
 
-    let answer2 = solver.solve(2).expect("Failed to solve part 2");
-    assert_eq!(answer2, "210");
+    let result2 = solver.solve(2).expect("Failed to solve part 2");
+    assert_eq!(result2.answer, "210");
 }

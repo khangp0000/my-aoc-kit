@@ -49,14 +49,13 @@
 //! // Use the solver with builder pattern
 //! let mut builder = SolverRegistryBuilder::new();
 //! builder.register(2023, 1, 2, |input: &str| {
-//!     let shared = MyDay1::parse(input)?;
-//!     Ok(Box::new(SolverInstance::<MyDay1>::new(2023, 1, shared)))
+//!     Ok(Box::new(SolverInstance::<MyDay1>::new(2023, 1, input)?))
 //! }).unwrap();
 //! let registry = builder.build();
 //!
 //! let mut solver = registry.create_solver(2023, 1, "1\n2\n3").unwrap();
-//! let answer = solver.solve(1).unwrap();
-//! assert_eq!(answer, "6");
+//! let result = solver.solve(1).unwrap();
+//! assert_eq!(result.answer, "6");
 //! ```
 //!
 //! # Key Concepts
@@ -97,12 +96,15 @@ mod solver;
 
 // Re-export public API
 pub use error::{ParseError, RegistrationError, SolveError, SolverError};
-pub use instance::{DynSolver, SolverInstance};
+pub use instance::{DynSolver, SolveResult, SolverInstance};
 pub use registry::{
     BASE_YEAR, CAPACITY, DAYS_PER_YEAR, MAX_YEARS, RegisterableSolver, SolverFactory, SolverInfo,
     SolverPlugin, SolverRegistry, SolverRegistryBuilder, SolverRegistryStorage,
 };
 pub use solver::{AocParser, PartSolver, Solver, SolverExt};
+
+// Re-export chrono types for timing
+pub use chrono::{DateTime, TimeDelta, Utc};
 
 // Legacy type aliases for backward compatibility
 #[deprecated(since = "0.2.0", note = "Use SolverRegistryBuilder instead")]

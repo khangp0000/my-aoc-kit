@@ -13,6 +13,7 @@ categories = ["development-tools"]
 inventory = { workspace = true }
 aoc-solver-macros = { path = "../aoc-solver-macros" }
 thiserror = "2.0"
+chrono = "0.4"
 
 [dev-dependencies]
 proptest = "1.9"

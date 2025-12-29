@@ -229,7 +229,10 @@ fn main() {
 
     if let Ok(mut solver) = registry.create_solver(2024, 25, input4) {
         println!("Found solver for 2024 day 25 (ZeroCopyStrExample)");
-        println!("Part 1: {}", solver.solve(1).unwrap());
-        println!("Part 2: {}", solver.solve(2).unwrap());
+        let result1 = solver.solve(1).unwrap();
+        println!("Part 1: {} (took {:?})", result1.answer, result1.duration());
+        let result2 = solver.solve(2).unwrap();
+        println!("Part 2: {} (took {:?})", result2.answer, result2.duration());
+        println!("Parse took {:?}", solver.parse_duration());
     }
 }

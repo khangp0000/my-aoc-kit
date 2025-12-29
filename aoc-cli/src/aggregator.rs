@@ -111,6 +111,7 @@ mod tests {
             part,
             answer: Ok(format!("{}_{}_{}", year, day, part)),
             solve_duration: Duration::from_millis(10),
+            parse_duration: Some(Duration::from_millis(5)),
             submitted_at: None,
             submission: None,
             submission_wait: None,

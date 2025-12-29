@@ -28,8 +28,8 @@
 //!
 //! // Create and use a solver
 //! if let Ok(mut solver) = registry.create_solver(2023, 1, "input data") {
-//!     let answer = solver.solve(1).expect("Failed to solve");
-//!     println!("Answer: {}", answer);
+//!     let result = solver.solve(1).expect("Failed to solve");
+//!     println!("Answer: {}", result.answer);
 //! }
 //! ```
 
@@ -364,8 +364,8 @@ where
         day: u8,
     ) -> Result<&'a mut SolverRegistryBuilder, RegistrationError> {
         builder.register(year, day, S::PARTS, move |input: &str| {
-            let shared = S::parse(input)?;
-            Ok(Box::new(SolverInstance::<S>::new(year, day, shared)))
+            // SolverInstance::new handles parsing and timing
+            Ok(Box::new(SolverInstance::<S>::new(year, day, input)?))
         })
     }
 
@@ -462,10 +462,9 @@ macro_rules! register_solver {
     ($builder:expr, $solver:ty, $year:expr, $day:expr) => {
         $builder
             .register($year, $day, <$solver>::PARTS, |input: &str| {
-                let shared = <$solver>::parse(input)?;
                 Ok(Box::new($crate::SolverInstance::<$solver>::new(
-                    $year, $day, shared,
-                )))
+                    $year, $day, input,
+                )?))
             })
             .expect("Failed to register solver");
     };

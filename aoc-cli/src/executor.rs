@@ -11,7 +11,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use std::ops::RangeInclusive;
 use std::sync::mpsc::Sender;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
 /// Submission outcome from AoC
@@ -31,6 +31,7 @@ pub struct SolverResult {
     pub part: u8,
     pub answer: Result<String, aoc_solver::SolverError>,
     pub solve_duration: Duration,
+    pub parse_duration: Option<Duration>,
     pub submitted_at: Option<DateTime<Local>>,
     pub submission: Option<SubmissionOutcome>,
     pub submission_wait: Option<Duration>,
@@ -223,6 +224,7 @@ fn make_error_result(year: u16, day: u8, part: u8, error: &str) -> SolverResult 
             aoc_solver::ParseError::InvalidFormat(error.to_string()),
         )),
         solve_duration: Duration::ZERO,
+        parse_duration: None,
         submitted_at: None,
         submission: None,
         submission_wait: None,
@@ -294,7 +296,8 @@ fn run_solver_parts_parallel(
         .into_par_iter()
         .for_each_with(result_tx, |rtx, part| {
             let mut solver = registry.create_solver(year, day, input).unwrap();
-            rtx.send(solve_part_internal(year, day, part, &mut *solver))
+            let parse_duration = solver.parse_duration().to_std().ok();
+            rtx.send(solve_part_internal(year, day, part, &mut *solver, parse_duration))
                 .ok();
         });
 
@@ -355,9 +358,10 @@ fn run_solver_sequential(
     std::thread::scope(|s| {
         s.spawn(move || {
             let mut solver = registry.create_solver(year, day, input).unwrap();
+            let parse_duration = solver.parse_duration().to_std().ok();
             for part in parts {
                 if solve_tx
-                    .send(solve_part_internal(year, day, part, &mut *solver))
+                    .send(solve_part_internal(year, day, part, &mut *solver, parse_duration))
                     .is_err()
                 {
                     break;
@@ -424,16 +428,30 @@ fn get_input_parallel(
 }
 
 /// Solve a single part (free function)
-fn solve_part_internal(year: u16, day: u8, part: u8, solver: &mut dyn DynSolver) -> SolverResult {
-    let start = Instant::now();
+fn solve_part_internal(
+    year: u16,
+    day: u8,
+    part: u8,
+    solver: &mut dyn DynSolver,
+    parse_duration: Option<Duration>,
+) -> SolverResult {
     let answer = solver.solve(part);
+
+    let (answer_str, solve_duration) = match answer {
+        Ok(result) => (
+            Ok(result.answer.clone()),
+            result.duration().to_std().unwrap_or(Duration::ZERO),
+        ),
+        Err(e) => (Err(e.into()), Duration::ZERO),
+    };
 
     SolverResult {
         year,
         day,
         part,
-        answer: answer.map_err(Into::into),
-        solve_duration: start.elapsed(),
+        answer: answer_str,
+        solve_duration,
+        parse_duration,
         submitted_at: None,
         submission: None,
         submission_wait: None,

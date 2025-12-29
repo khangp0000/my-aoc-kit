@@ -40,7 +40,11 @@ impl OutputFormatter {
 
         match &result.answer {
             Ok(answer) => {
-                let timing = format_duration(result.solve_duration);
+                let parse_timing = result
+                    .parse_duration
+                    .map(|d| format!("parse: {}, ", format_duration(d)))
+                    .unwrap_or_default();
+                let solve_timing = format_duration(result.solve_duration);
 
                 let submission_info = match &result.submission {
                     Some(outcome) => {
@@ -53,7 +57,7 @@ impl OutputFormatter {
                     None => String::new(),
                 };
 
-                println!("{}: {} ({}{})", prefix, answer, timing, submission_info);
+                println!("{}: {} ({}solve: {}{})", prefix, answer, parse_timing, solve_timing, submission_info);
             }
             Err(e) => {
                 eprintln!("{}: Error - {}", prefix, e);
@@ -72,6 +76,11 @@ impl OutputFormatter {
         let successes = results.iter().filter(|r| r.answer.is_ok()).count();
         let failures = total - successes;
 
+        let total_parse_time: std::time::Duration = results
+            .iter()
+            .filter(|r| r.answer.is_ok())
+            .filter_map(|r| r.parse_duration)
+            .sum();
         let total_solve_time: std::time::Duration = results
             .iter()
             .filter(|r| r.answer.is_ok())
@@ -82,6 +91,7 @@ impl OutputFormatter {
         println!();
         println!("--- Summary ---");
         println!("Solvers: {} solved, {} failed", successes, failures);
+        println!("Total parse time: {}", format_duration(total_parse_time));
         println!("Total solve time: {}", format_duration(total_solve_time));
         println!("Elapsed wall-clock time: {}", format_duration(elapsed_time));
         if !elapsed_time.is_zero() {

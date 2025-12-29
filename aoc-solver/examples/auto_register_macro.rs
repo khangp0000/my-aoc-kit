@@ -105,14 +105,16 @@ fn main() {
         .expect("Failed to create Day 1 solver");
 
     match solver1.solve(1) {
-        Ok(answer) => println!("Day 1, Part 1 (Sum): {}", answer),
+        Ok(result) => println!("Day 1, Part 1 (Sum): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error: {}", e),
     }
 
     match solver1.solve(2) {
-        Ok(answer) => println!("Day 1, Part 2 (Product): {}", answer),
+        Ok(result) => println!("Day 1, Part 2 (Product): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error: {}", e),
     }
+
+    println!("Parse took {:?}", solver1.parse_duration());
 
     // Solve Day 2
     let input2 = "1\n2\n3\n4\n5\n6";
@@ -123,14 +125,16 @@ fn main() {
         .expect("Failed to create Day 2 solver");
 
     match solver2.solve(1) {
-        Ok(answer) => println!("Day 2, Part 1 (Sum of evens): {}", answer),
+        Ok(result) => println!("Day 2, Part 1 (Sum of evens): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error: {}", e),
     }
 
     match solver2.solve(2) {
-        Ok(answer) => println!("Day 2, Part 2 (Sum of odds): {}", answer),
+        Ok(result) => println!("Day 2, Part 2 (Sum of odds): {} (took {:?})", result.answer, result.duration()),
         Err(e) => eprintln!("Error: {}", e),
     }
+
+    println!("Parse took {:?}", solver2.parse_duration());
 
     println!("\n=== Benefits ===");
     println!("✓ AocParser + PartSolver<N> provide clean separation of concerns");

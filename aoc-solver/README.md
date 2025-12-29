@@ -12,6 +12,7 @@ A flexible and type-safe Rust framework for solving Advent of Code problems acro
 - **Plugin system**: Automatic solver discovery and registration using the `inventory` crate
 - **Derive macros**: Zero-boilerplate with `#[derive(AocSolver)]` and `#[derive(AutoRegisterSolver)]`
 - **Flexible data ownership**: Generic associated type `SharedData<'a>` allows any ownership strategy (owned, borrowed)
+- **Built-in timing**: Automatic parse and solve timing capture with `chrono::DateTime<Utc>` timestamps
 
 ## Quick Start
 
@@ -74,6 +75,40 @@ fn main() {
     println!("Part 2: {}", solver.solve(2).unwrap()); // Part 2: 120
 }
 ```
+
+### Accessing Timing Information
+
+The framework automatically captures parse and solve timing:
+
+```rust
+use aoc_solver::{SolverRegistryBuilder, DynSolver};
+
+fn main() {
+    let registry = SolverRegistryBuilder::new()
+        .register_all_plugins()
+        .unwrap()
+        .build();
+
+    let input = "1\n2\n3\n4\n5";
+    let mut solver = registry.create_solver(2023, 1, input).unwrap();
+
+    // Parse timing is captured during solver creation
+    println!("Parse duration: {:?}", solver.parse_duration());
+
+    // Solve timing is captured per-part
+    let result = solver.solve(1).unwrap();
+    println!("Part 1: {} (solved in {:?})", result.answer, result.duration());
+}
+```
+
+The `SolveResult` struct provides:
+- `answer`: The computed answer as a `String`
+- `solve_start` / `solve_end`: UTC timestamps for solve timing
+- `duration()`: Convenience method returning `TimeDelta`
+
+The `DynSolver` trait provides:
+- `parse_start()` / `parse_end()`: UTC timestamps for parse timing
+- `parse_duration()`: Convenience method returning `TimeDelta`
 
 ## Trait-Based Design
 
