@@ -193,22 +193,38 @@ fn main() {
     if let Ok(mut solver) = registry.create_solver(2023, 1, input)
         && let Ok(result) = solver.solve(1)
     {
-        println!("2023 Day 1 Part 1: {} (took {:?})", result.answer, result.duration());
+        println!(
+            "2023 Day 1 Part 1: {} (took {:?})",
+            result.answer,
+            result.duration()
+        );
     }
     if let Ok(mut solver) = registry.create_solver(2023, 2, input)
         && let Ok(result) = solver.solve(1)
     {
-        println!("2023 Day 2 Part 1: {} (took {:?})", result.answer, result.duration());
+        println!(
+            "2023 Day 2 Part 1: {} (took {:?})",
+            result.answer,
+            result.duration()
+        );
     }
     if let Ok(mut solver) = registry.create_solver(2024, 3, input)
         && let Ok(result) = solver.solve(1)
     {
-        println!("2024 Day 3 Part 1: {} (took {:?})", result.answer, result.duration());
+        println!(
+            "2024 Day 3 Part 1: {} (took {:?})",
+            result.answer,
+            result.duration()
+        );
     }
     if let Ok(mut solver) = registry.create_solver(2024, 4, input)
         && let Ok(result) = solver.solve(1)
     {
-        println!("2024 Day 4 Part 1 (derive macro): {} (took {:?})", result.answer, result.duration());
+        println!(
+            "2024 Day 4 Part 1 (derive macro): {} (took {:?})",
+            result.answer,
+            result.duration()
+        );
     }
 
     // Scenario 2: Register only "easy" solvers

@@ -102,7 +102,7 @@ impl ResultAggregator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
+    use chrono::TimeDelta;
 
     fn make_result(year: u16, day: u8, part: u8) -> SolverResult {
         SolverResult {
@@ -110,8 +110,8 @@ mod tests {
             day,
             part,
             answer: Ok(format!("{}_{}_{}", year, day, part)),
-            solve_duration: Duration::from_millis(10),
-            parse_duration: Some(Duration::from_millis(5)),
+            solve_duration: TimeDelta::milliseconds(10),
+            parse_duration: Some(TimeDelta::milliseconds(5)),
             submitted_at: None,
             submission: None,
             submission_wait: None,

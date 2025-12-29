@@ -119,12 +119,20 @@ fn main() {
         .expect("Failed to create Day 1 solver");
 
     match solver1.solve(1) {
-        Ok(result) => println!("Day 1, Part 1 (Sum): {} (took {:?})", result.answer, result.duration()),
+        Ok(result) => println!(
+            "Day 1, Part 1 (Sum): {} (took {:?})",
+            result.answer,
+            result.duration()
+        ),
         Err(e) => eprintln!("Error: {}", e),
     }
 
     match solver1.solve(2) {
-        Ok(result) => println!("Day 1, Part 2 (Product): {} (took {:?})", result.answer, result.duration()),
+        Ok(result) => println!(
+            "Day 1, Part 2 (Product): {} (took {:?})",
+            result.answer,
+            result.duration()
+        ),
         Err(e) => eprintln!("Error: {}", e),
     }
 
@@ -139,12 +147,20 @@ fn main() {
         .expect("Failed to create Day 2 solver");
 
     match solver2.solve(1) {
-        Ok(result) => println!("Day 2, Part 1 (Sum of evens): {} (took {:?})", result.answer, result.duration()),
+        Ok(result) => println!(
+            "Day 2, Part 1 (Sum of evens): {} (took {:?})",
+            result.answer,
+            result.duration()
+        ),
         Err(e) => eprintln!("Error: {}", e),
     }
 
     match solver2.solve(2) {
-        Ok(result) => println!("Day 2, Part 2 (Sum of odds): {} (took {:?})", result.answer, result.duration()),
+        Ok(result) => println!(
+            "Day 2, Part 2 (Sum of odds): {} (took {:?})",
+            result.answer,
+            result.duration()
+        ),
         Err(e) => eprintln!("Error: {}", e),
     }
 

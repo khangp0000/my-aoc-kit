@@ -29,13 +29,13 @@ fn main() {
 
 fn run(args: Args) -> Result<(), error::CliError> {
     // Build config from args (may not have session yet)
-    let mut config = Config::from_args(args)?;
+    let config = Config::from_args(args)?;
 
-    // Build registry with tag filtering
+    // Build registry with tag filtering (only once)
     let registry = build_registry(&config.tags)?;
 
     // Create executor
-    let executor =
+    let mut executor =
         Executor::new(registry, &config).map_err(|e| error::CliError::Config(e.to_string()))?;
 
     // Collect work items
@@ -68,22 +68,16 @@ fn run(args: Args) -> Result<(), error::CliError> {
             };
             let actual_user_id = config::verify_session(&session, expected)?;
 
-            // Update config
-            config.session = session;
-            config.user_id = actual_user_id;
-
-            // Recreate executor with updated config
-            let registry = build_registry(&config.tags)?;
-            let executor = Executor::new(registry, &config)
+            // Update executor with new session and user_id
+            executor
+                .update_session(session, actual_user_id)
                 .map_err(|e| error::CliError::Config(e.to_string()))?;
-
-            return run_executor(executor, config);
+        } else {
+            println!("Will fetch missing inputs using provided session...");
         }
-
-        println!("Will fetch missing inputs using provided session...");
     }
 
-    run_executor(executor, config)
+    run_executor(executor, config.quiet)
 }
 
 /// Check which inputs are missing from cache
@@ -97,7 +91,7 @@ fn check_missing_inputs(work_items: &[executor::WorkItem], config: &Config) -> V
 }
 
 /// Run the executor and collect results
-fn run_executor(executor: Executor, config: Config) -> Result<(), error::CliError> {
+fn run_executor(executor: Executor, quiet: bool) -> Result<(), error::CliError> {
     let work_items = executor.collect_work_items();
     println!("Running {} solver(s)...", work_items.len());
 
@@ -120,7 +114,7 @@ fn run_executor(executor: Executor, config: Config) -> Result<(), error::CliErro
     let executor_handle = std::thread::spawn(move || executor.execute(tx));
 
     // Collect and display results in order using aggregator
-    let formatter = OutputFormatter::new(config.quiet);
+    let formatter = OutputFormatter::new(quiet);
     let mut aggregator = aggregator::ResultAggregator::new(expected_keys);
     let mut results = Vec::new();
 

@@ -19,6 +19,12 @@ impl InputCache {
         Self { user_dir: base_dir }
     }
 
+    /// Update the user ID (pops current user_id and pushes new one)
+    pub fn set_user_id(&mut self, user_id: u64) {
+        self.user_dir.pop();
+        self.user_dir.push(user_id.to_string());
+    }
+
     /// Get the cache path for a specific year/day
     pub fn cache_path(&self, year: u16, day: u8) -> PathBuf {
         self.user_dir.join(format!("{}_day{:02}.txt", year, day))

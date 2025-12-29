@@ -6,12 +6,11 @@ use crate::config::Config;
 use crate::error::{ArcExecutorError, ExecutorError};
 use aoc_http_client::AocClient;
 use aoc_solver::{DynSolver, SolverRegistry};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeDelta};
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::ops::RangeInclusive;
 use std::sync::mpsc::Sender;
-use std::time::Duration;
 use zeroize::Zeroizing;
 
 /// Submission outcome from AoC
@@ -20,7 +19,7 @@ pub enum SubmissionOutcome {
     Correct,
     Incorrect,
     AlreadyCompleted,
-    Throttled { wait_time: Option<Duration> },
+    Throttled { wait_time: Option<TimeDelta> },
     Error(String),
 }
 
@@ -30,11 +29,11 @@ pub struct SolverResult {
     pub day: u8,
     pub part: u8,
     pub answer: Result<String, aoc_solver::SolverError>,
-    pub solve_duration: Duration,
-    pub parse_duration: Option<Duration>,
+    pub solve_duration: TimeDelta,
+    pub parse_duration: Option<TimeDelta>,
     pub submitted_at: Option<DateTime<Local>>,
     pub submission: Option<SubmissionOutcome>,
-    pub submission_wait: Option<Duration>,
+    pub submission_wait: Option<TimeDelta>,
 }
 
 /// Work item representing a solver to execute
@@ -123,6 +122,31 @@ impl Executor {
             Some(_) => 1..=0, // Empty range - intentional
             None => 1..=max_parts,
         }
+    }
+
+    /// Update session and user ID (for late session acquisition)
+    pub fn update_session(
+        &mut self,
+        session: Zeroizing<String>,
+        user_id: u64,
+    ) -> Result<(), ExecutorError> {
+        // Create HTTP client if we don't have one yet
+        if self.sync_executor_config.client.is_none() {
+            self.sync_executor_config.client =
+                Some(AocClient::new().map_err(|e| ExecutorError::InputFetch {
+                    year: 0,
+                    day: 0,
+                    source: Box::new(e),
+                })?);
+        }
+
+        // Update session
+        self.sync_executor_config.session = session;
+
+        // Update cache user_id
+        self.sync_executor_config.cache.set_user_id(user_id);
+
+        Ok(())
     }
 
     /// Execute all work items and send results to channel
@@ -223,7 +247,7 @@ fn make_error_result(year: u16, day: u8, part: u8, error: &str) -> SolverResult 
         answer: Err(aoc_solver::SolverError::ParseError(
             aoc_solver::ParseError::InvalidFormat(error.to_string()),
         )),
-        solve_duration: Duration::ZERO,
+        solve_duration: TimeDelta::zero(),
         parse_duration: None,
         submitted_at: None,
         submission: None,
@@ -296,8 +320,7 @@ fn run_solver_parts_parallel(
         .into_par_iter()
         .for_each_with(result_tx, |rtx, part| {
             let mut solver = registry.create_solver(year, day, input).unwrap();
-            let parse_duration = solver.parse_duration().to_std().ok();
-            rtx.send(solve_part_internal(year, day, part, &mut *solver, parse_duration))
+            rtx.send(solve_part_internal(year, day, part, &mut *solver))
                 .ok();
         });
 
@@ -358,10 +381,9 @@ fn run_solver_sequential(
     std::thread::scope(|s| {
         s.spawn(move || {
             let mut solver = registry.create_solver(year, day, input).unwrap();
-            let parse_duration = solver.parse_duration().to_std().ok();
             for part in parts {
                 if solve_tx
-                    .send(solve_part_internal(year, day, part, &mut *solver, parse_duration))
+                    .send(solve_part_internal(year, day, part, &mut *solver))
                     .is_err()
                 {
                     break;
@@ -428,21 +450,13 @@ fn get_input_parallel(
 }
 
 /// Solve a single part (free function)
-fn solve_part_internal(
-    year: u16,
-    day: u8,
-    part: u8,
-    solver: &mut dyn DynSolver,
-    parse_duration: Option<Duration>,
-) -> SolverResult {
+fn solve_part_internal(year: u16, day: u8, part: u8, solver: &mut dyn DynSolver) -> SolverResult {
     let answer = solver.solve(part);
+    let parse_duration = Some(solver.parse_duration());
 
     let (answer_str, solve_duration) = match answer {
-        Ok(result) => (
-            Ok(result.answer.clone()),
-            result.duration().to_std().unwrap_or(Duration::ZERO),
-        ),
-        Err(e) => (Err(e.into()), Duration::ZERO),
+        Ok(result) => (Ok(result.answer.clone()), result.duration()),
+        Err(e) => (Err(e.into()), TimeDelta::zero()),
     };
 
     SolverResult {
@@ -490,7 +504,7 @@ fn submit_with_retry_internal(
     client: Option<&AocClient>,
     session: &str,
     auto_retry: bool,
-) -> (Option<SubmissionOutcome>, Option<Duration>) {
+) -> (Option<SubmissionOutcome>, Option<TimeDelta>) {
     let client = match client {
         Some(c) => c,
         None => {
@@ -501,7 +515,7 @@ fn submit_with_retry_internal(
         }
     };
 
-    let mut total_wait = Duration::ZERO;
+    let mut total_wait = TimeDelta::zero();
 
     loop {
         match client.submit_answer(year, day, part, answer, session) {
@@ -517,11 +531,13 @@ fn submit_with_retry_internal(
             Ok(aoc_http_client::SubmissionResult::Throttled { wait_time }) => {
                 if auto_retry && let Some(wait) = wait_time {
                     std::thread::sleep(wait);
-                    total_wait += wait;
+                    total_wait += TimeDelta::from_std(wait).unwrap_or(TimeDelta::zero());
                     continue;
                 }
                 return (
-                    Some(SubmissionOutcome::Throttled { wait_time }),
+                    Some(SubmissionOutcome::Throttled {
+                        wait_time: wait_time.and_then(|w| TimeDelta::from_std(w).ok()),
+                    }),
                     Some(total_wait),
                 );
             }
