@@ -60,19 +60,18 @@ impl PartSolver<2> for Day1 {
 use aoc_solver::{SolverRegistryBuilder, Solver, SolverInstance};
 
 fn main() {
-    let registry = SolverRegistryBuilder::new()
-        .register(2023, 1, |input: &str| {
-            let shared = Day1::parse(input)?;
-            Ok(Box::new(SolverInstance::<Day1>::new(2023, 1, shared)))
-        })
-        .unwrap()
-        .build();
+    let mut builder = SolverRegistryBuilder::new();
+    builder.register(2023, 1, 2, |input: &str| {
+        Ok(Box::new(SolverInstance::<Day1>::new(2023, 1, input)?))
+    })
+    .unwrap();
+    let registry = builder.build();
 
     let input = "1\n2\n3\n4\n5";
     let mut solver = registry.create_solver(2023, 1, input).unwrap();
 
-    println!("Part 1: {}", solver.solve(1).unwrap()); // Part 1: 15
-    println!("Part 2: {}", solver.solve(2).unwrap()); // Part 2: 120
+    println!("Part 1: {}", solver.solve(1).unwrap().answer); // Part 1: 15
+    println!("Part 2: {}", solver.solve(2).unwrap().answer); // Part 2: 120
 }
 ```
 
